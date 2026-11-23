@@ -25,7 +25,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/tools/capture_session.py\""
+            "command": "python \"$CLAUDE_PROJECT_DIR/tools/capture_session.py\"",
+            "timeout": 30
           }
         ]
       }

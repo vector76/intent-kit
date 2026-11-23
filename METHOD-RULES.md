@@ -40,6 +40,8 @@ Work may happen in git worktrees (Claude Code's, Backplane's or your own) or on 
 
 Hooks in `.claude/settings.json` run `tools/capture_session.py`. It copies each session's transcript into `record/sessions/` (worktree sessions included) and commits the record repo at session start, every 10 turns and at session end. Sweep by hand with `python tools/capture_session.py --all --commit`. Commits here get a `Session: <id>` trailer from `.githooks/prepare-commit-msg` (enabled by `git config core.hooksPath .githooks`), linking each commit to the session that made it; don't remove it. `python tools/kit.py check` verifies the whole setup. If the session start says the session is NOT being recorded, tell the owner. On a fresh clone the fix is usually `git config core.hooksPath .githooks` and `python tools/kit.py record --remote <the record's private url>`.
 
+**Secrets in the record.** Transcripts keep whatever passed through a session, keys and passwords included. The hooks scan new text for likely secrets. If the session start says the record holds some, tell the owner, show them the masked list (`python tools/record_secrets.py`), and suggest revoking any real one. Scrubbing rewrites the record's history (`python tools/record_secrets.py scrub <id>`), so do it only when the owner asks. Never print, repeat or search for a secret's full text: it would land in this session's transcript too.
+
 Use Claude as the agent here: other agents leave no Claude transcript, so their sessions would be missing from the record.
 
 When extracting intent from a forked or resumed session, the handed-over context at the start shows up as messages but is already captured (marked `*`) or isn't the owner's words: skip it.

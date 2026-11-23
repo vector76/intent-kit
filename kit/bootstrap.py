@@ -47,7 +47,7 @@ PHILOSOPHY = KIT / "PHILOSOPHY.md"
 VERSION = (KIT / "VERSION").read_text(encoding="utf-8").strip()
 CONFIG_NAME = "intent-kit.json"
 TOOL_FILES = ["kitlib.py", "capture_session.py", "extract_human_messages.py", "to_main.py",
-              "sync.py", "land.py", "kit.py"]
+              "sync.py", "land.py", "kit.py", "record_secrets.py"]
 LAYERS = {"research": "research", "concepts": "concepts", "experiments": "experiments"}
 STANCES = {"wide-search", "forward-plausibility"}
 GITIGNORE = ["/record/", "/.claude/current-session", "/.claude/record-turns/",
@@ -57,6 +57,8 @@ GITIGNORE = ["/record/", "/.claude/current-session", "/.claude/record-turns/",
 NEW_ONLY_GITIGNORE = ["/out/"]
 NEW_ONLY_STARTERS = [".gitattributes"]
 HOOK_EVENTS = ["SessionStart", "Stop", "SessionEnd"]
+HOOK = ".githooks/prepare-commit-msg"
+SESSION_END_TIMEOUT = 30  # seconds; Claude Code gives SessionEnd hooks 1.5 s unless told otherwise
 ADDED_SETTINGS = {"sync_after_to_main": False, "python": "python"}  # what older kits' hooks ran
 MIN_PYTHON = (3, 10)
 QUIET = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
@@ -157,7 +159,7 @@ def merged_settings(path: Path, cfg: dict) -> str | None:
     for ev in HOOK_EVENTS:
         groups = hooks.setdefault(ev, [])
         if not any("capture_session.py" in h.get("command", "") for g in groups for h in g.get("hooks", [])):
-            groups.append({"hooks": [{"type": "command", "command": cmd}]})
+            groups.append({"hooks": [{"type": "command", "command": cmd, **({"timeout": SESSION_END_TIMEOUT} if ev == "SessionEnd" else {})}]})
             changed = True
     return json.dumps(data, indent=2) + "\n" if changed else None
 
@@ -339,8 +341,14 @@ def init(a):
         print("bootstrap: the record isn't fully set up (see above); fix it, then run "
               f"python {cfg['tools_dir']}/kit.py record" + (f" --remote {remote}" if remote else ""))
     run_tool(root, cfg, "render")
-    if not is_repo:
+    # Windows doesn't record the executable bit, and macOS and Linux skip a hook without it,
+    # so git's copy is marked executable whatever this machine is.
+    if is_repo:
+        git("add", "--chmod=+x", "--", HOOK, cwd=root, check=True)
+        print(f"bootstrap: staged {HOOK} as executable (git skips a hook that isn't, on macOS and Linux)")
+    else:
         git("add", "-A", cwd=root, check=True)
+        git("update-index", "--chmod=+x", "--", HOOK, cwd=root, check=True)
         git("commit", "-q", "-m", f"Set up {cfg['project']} with intent-kit {VERSION}", cwd=root, check=True)
         print(f"bootstrap: committed the scaffold on {cfg['main_branch']}")
     run_tool(root, cfg, "check")
@@ -381,7 +389,11 @@ def upgrade(a):
     for rel in new_starters:
         print(f"--- {rel}: missing starter file; the kit would add it")
     old_version = cfg.get("kit_version", "?")
-    if not changed and not new_starters and old_version == VERSION:
+    mode = git("ls-files", "-s", "--", HOOK, cwd=root).stdout.split()
+    hook_not_x = bool(mode) and mode[0] != "100755"
+    if hook_not_x:
+        print(f"--- {HOOK}: tracked as not executable, so git on macOS and Linux skips it; the kit would fix that")
+    if not changed and not new_starters and not hook_not_x and old_version == VERSION:
         print(f"bootstrap: {root} is up to date with kit {VERSION}")
         return
     if not a.apply:
@@ -397,6 +409,9 @@ def upgrade(a):
         p = root / rel
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(starters[rel], encoding="utf-8", newline="\n")
+    if hook_not_x:
+        git("update-index", "--chmod=+x", "--", HOOK, cwd=root, check=True)
+        print(f"bootstrap: staged {HOOK} as executable; commit it")
     data = json.loads(cfg_path.read_text(encoding="utf-8"))
     data["kit_version"] = VERSION
     for k, v in ADDED_SETTINGS.items():  # settings added in later kit versions, at their defaults

@@ -38,7 +38,7 @@ IMPORT = "@" + RULES_NAME
 BEGIN = "<!-- intent-kit:begin -->"  # an older kit inlined the rules in CLAUDE.md between these
 END = "<!-- intent-kit:end -->"
 MANAGED = ["kitlib.py", "capture_session.py", "extract_human_messages.py", "to_main.py",
-           "sync.py", "land.py", "kit.py"]
+           "sync.py", "land.py", "kit.py", "record_secrets.py"]
 CLAUDE_POINTER = (
     "## How this project keeps its record\n\n"
     "This project follows the intent-kit method: `METHOD.md` explains it, and the working rules "
@@ -183,7 +183,14 @@ def render_rules(cfg: dict) -> str:
         "linking each commit to the session that made it; don't remove it. "
         f"`{py} {t}/kit.py check` verifies the whole setup. If the session start says the session is NOT "
         "being recorded, tell the owner. On a fresh clone the fix is usually `git config core.hooksPath "
-        f".githooks` and `{py} {t}/kit.py record --remote <the record's private url>`.")
+        f".githooks` and `{py} {t}/kit.py record --remote <the record's private url>`."
+        "\n\n**Secrets in the record.** Transcripts keep whatever passed through a session, keys and "
+        "passwords included. The hooks scan new text for likely secrets. If the session start says the "
+        "record holds some, tell the owner, show them the masked list "
+        f"(`{py} {t}/record_secrets.py`), and suggest revoking any real one. Scrubbing rewrites the "
+        f"record's history (`{py} {t}/record_secrets.py scrub <id>`), so do it only when the owner asks. "
+        "Never print, repeat or search for a secret's full text: it would land in this session's "
+        "transcript too.")
     if cfg.get("agents", "claude-only") == "claude-only":
         capture += ("\n\nUse Claude as the agent here: other agents leave no Claude transcript, so their "
                     "sessions would be missing from the record.")
@@ -267,6 +274,7 @@ def with_import(text: str) -> str:
 
 
 HOOK_EVENTS = ("SessionStart", "Stop", "SessionEnd")
+SESSION_END_TIMEOUT = 30  # seconds; Claude Code gives SessionEnd hooks 1.5 s unless told otherwise
 
 
 def hook_command(cfg: dict) -> str:
@@ -308,12 +316,15 @@ def render(root: Path = REPO) -> bool:
         settings = None
     if settings is not None:
         want, fixed = hook_command(cfg), 0
-        for _, h in capture_hooks(settings):
+        for event, h in capture_hooks(settings):
             if h.get("command") != want:
                 h["command"], fixed = want, fixed + 1
+            if event == "SessionEnd" and h.get("timeout", 0) < SESSION_END_TIMEOUT:
+                h["timeout"], fixed = SESSION_END_TIMEOUT, fixed + 1
         if fixed:
             sp.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8", newline="\n")
-            print(f"kit: .claude/settings.json hooks now run {want}")
+            print(f"kit: .claude/settings.json hooks now run {want}, with {SESSION_END_TIMEOUT}s to commit at "
+                  "session end")
     print("kit: publish with tools/to_main.py docs" if changed else "kit: rules already current")
     return changed
 
@@ -437,6 +448,11 @@ def check(root: Path = REPO) -> list[str]:
                         "(git config core.hooksPath .githooks)")
     if not (root / ".githooks" / "prepare-commit-msg").is_file():
         problems.append(".githooks/prepare-commit-msg is missing")
+    mode = git("ls-files", "-s", "--", ".githooks/prepare-commit-msg", cwd=root).stdout.split()
+    if mode and mode[0] != "100755":
+        problems.append(".githooks/prepare-commit-msg is tracked as not executable, so git on macOS and Linux "
+                        "skips it and commits there get no Session: trailer "
+                        "(git update-index --chmod=+x .githooks/prepare-commit-msg, then commit)")
     for name in MANAGED:
         if not (root / t / name).is_file():
             problems.append(f"{t}/{name} is missing")
@@ -450,6 +466,9 @@ def check(root: Path = REPO) -> list[str]:
             problems.append(f".claude/settings.json has no {event} hook running capture_session.py")
     if any(h.get("command") != hook_command(cfg) for _, h in found):
         problems.append(f".claude/settings.json hooks don't run {hook_command(cfg)} (python {t}/kit.py render)")
+    if any(e == "SessionEnd" and h.get("timeout", 0) < SESSION_END_TIMEOUT for e, h in found):
+        problems.append(f"the SessionEnd hook has Claude Code's default 1.5 s, too little to commit the record "
+                        f"(python {t}/kit.py render sets {SESSION_END_TIMEOUT} s)")
     claude = root / "CLAUDE.md"
     text = claude.read_text(encoding="utf-8") if claude.is_file() else ""
     if with_import(text) != text:
@@ -486,6 +505,12 @@ def check(root: Path = REPO) -> list[str]:
     if not cfg.get("sources"):
         notes.append(f"{CONFIG_NAME} has no \"sources\": cite the owner's messages that set its choices "
                      f"(python {t}/kit.py cite ...)")
+    if (RECORD / ".git").is_dir():
+        import record_secrets
+        n_open = len(record_secrets.open_findings())
+        if n_open:
+            notes.append(f"the record holds {n_open} possible secret(s) not yet dealt with "
+                         f"(python {t}/record_secrets.py; tell the owner)")
     for n in notes:
         print(f"kit: note: {n}")
     return problems

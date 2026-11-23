@@ -177,5 +177,19 @@ Then:
     it over (any way the owner likes, such as a drive) keeps it whole.
 
   Then run `tools/kit.py check`.
+- **Secrets in the record.** Transcripts keep whatever passed through a session. The
+  hooks scan new text for likely secrets (known key formats, private keys, passwords in
+  URLs, secret-looking assigned values).
+  - The owner sees a warning on the turn a new one appears. Each session start then
+    reminds the agent while any are open.
+  - `python tools/record_secrets.py` lists them masked, by ID. `ignore <id>` marks one
+    as not a secret.
+  - `scrub <id> [--sources]` redacts it from the record's files and rewrites the record's
+    history so no commit or leftover object holds it. Later copies are then redacted on
+    the way in. `--sources` also cleans Claude Code's own transcript copies of sessions
+    that have ended.
+  - Scrub only when the owner asks. If the record has a remote, the owner force-pushes
+    the rewritten history themselves; pushing stays manual. Either way, a real secret
+    should also be revoked: scrubbing can't undo where it's already been.
 - **A different Python.** Change `"python"` in `intent-kit.json` and run
   `tools/kit.py render`, which updates the hooks in `.claude/settings.json` to match.

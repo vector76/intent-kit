@@ -43,7 +43,8 @@ intent/log/             the owner's words, verbatim, append-only (I-0001), empty
 intent/vision.md        the current view, synthesized from the log
 plan/                   requirements (R-), decisions (D-), lessons (L-), empty to start
 research/ concepts/ experiments/    optional layers (N-, C-, E-)
-tools/                  capture, extract, to_main, sync, land, kit (check / render / cite / record)
+tools/                  capture, extract, to_main, sync, land, kit (check / render / cite / record),
+                        record_secrets (flag secrets in the record; scrub on request)
 .githooks/              Session: trailer on every commit
 .claude/settings.json   hooks that copy each session's transcript into record/
 record/                 a separate private git repo, ignored by the project, with its own

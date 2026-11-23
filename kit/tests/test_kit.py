@@ -451,6 +451,86 @@ class KitTest(unittest.TestCase):
         self.e.tool(solo, "kit.py", "record", "--remote", bare2)
         self.assertIn("README.md", self.e.git(bare2, "ls-tree", "--name-only", "main").stdout)
 
+    def test_hook_is_executable_in_git(self):
+        hook = ".githooks/prepare-commit-msg"
+        mode = lambda r: self.e.git(r, "ls-files", "-s", "--", hook).stdout.split()[0]
+        root = self.new_project()
+        self.assertEqual(mode(root), "100755")
+        self.e.git(root, "update-index", "--chmod=-x", "--", hook)
+        self.e.git(root, "commit", "-q", "-m", "lose the bit")
+        r = self.e.tool(root, "kit.py", "check", ok=False)
+        self.assertIn("not executable", r.stdout)
+        self.e.py(BOOTSTRAP, "upgrade", root, "--apply")
+        self.assertEqual(mode(root), "100755")
+        old = self.e.tmp / "old"
+        old.mkdir()
+        self.e.git(old, "init", "-q")
+        self.e.py(BOOTSTRAP, "init", old, "--name", "Old")
+        self.assertEqual(mode(old), "100755")  # staged that way for the owner's commit
+        settings = json.loads((root / ".claude/settings.json").read_text())
+        self.assertGreaterEqual(settings["hooks"]["SessionEnd"][0]["hooks"][0]["timeout"], 30)
+
+    def test_sessions_commit_the_record_independently(self):
+        root = self.new_project()
+        ta = self.e.transcript(root, SID_A, [user("from a", "2026-01-02T00:00:00Z")])
+        tb = self.e.transcript(root, SID_B, [user("from b", "2026-01-02T00:00:00Z")])
+        hook = lambda sid, t, ev: json.dumps({"hook_event_name": ev, "session_id": sid, "transcript_path": str(t)})
+        self.e.tool(root, "capture_session.py", input=hook(SID_B, tb, "Stop"))  # b copied, not committed
+        self.e.tool(root, "capture_session.py", input=hook(SID_A, ta, "SessionEnd"))
+        rec = root / "record"
+        files = self.e.git(rec, "show", "--name-only", "--format=", "HEAD").stdout.split()
+        self.assertEqual(files, [f"sessions/2026-01-02_{SID_A}.jsonl"])
+        self.assertIn(SID_B, self.e.git(rec, "status", "--porcelain").stdout)  # left for b's own commit
+        # another commit holding the lock: wait for it rather than drop this one
+        lock = rec / ".git" / "index.lock"
+        lock.write_text("")
+        env = dict(self.e.env)
+        p = subprocess.Popen([sys.executable, str(root / "tools" / "capture_session.py")], cwd=root, env=env,
+                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        import time
+        time.sleep(1.0)
+        lock.unlink()
+        p.communicate(hook(SID_B, tb, "SessionEnd"), timeout=60)
+        self.assertEqual(self.e.git(rec, "show", "--name-only", "--format=", "HEAD").stdout.split(),
+                         [f"sessions/2026-01-02_{SID_B}.jsonl"])
+
+    def test_secrets_are_flagged_and_scrubbed(self):
+        aws = "AKIA" + "QX7Z" * 4            # built here so no key-shaped text sits in this file
+        tok = "ghp_" + "a1B2" * 9
+        root = self.new_project()
+        rec = root / "record"
+        ta = self.e.transcript(root, SID_A, [user(f"key {aws} and {tok}", "2026-01-02T00:00:00Z")])
+        hook = lambda sid, t, ev: json.dumps({"hook_event_name": ev, "session_id": sid, "transcript_path": str(t)})
+        r = self.e.tool(root, "capture_session.py", input=hook(SID_A, ta, "Stop"))
+        self.assertIn("2 possible secret(s)", json.loads(r.stdout)["systemMessage"])
+        r = self.e.tool(root, "capture_session.py", input=hook(SID_A, ta, "Stop"))
+        self.assertEqual(r.stdout.strip(), "")  # warned once per finding
+        tb = self.e.transcript(root, SID_B, [user("next", "2026-01-03T00:00:00Z")])
+        r = self.e.tool(root, "capture_session.py", input=hook(SID_B, tb, "SessionStart"))
+        self.assertIn("2 possible secret(s)", r.stdout)  # reminded while open; this also committed them
+        listing = self.e.tool(root, "record_secrets.py").stdout
+        self.assertNotIn(aws, listing)
+        self.assertNotIn(tok, listing)
+        ids = {kind: line.split()[0] for line in listing.splitlines() for kind in ("AWS", "GitHub") if kind in line}
+        self.e.tool(root, "record_secrets.py", "ignore", ids["GitHub"])
+        self.assertIn("1 possible secret", self.e.tool(root, "record_secrets.py").stdout)
+        self.assertIn("1 possible secret", self.e.tool(root, "kit.py", "check").stdout)
+
+        self.e.tool(root, "record_secrets.py", "scrub", ids["AWS"], "--sources", sid=SID_B)
+        objects = subprocess.run(["git", "-C", str(rec), "cat-file", "--batch-all-objects", "--batch"],
+                                 env=self.e.env, capture_output=True).stdout  # bytes: trees are binary
+        self.assertNotIn(aws.encode(), objects)  # in no commit, no file, no leftover object
+        self.assertIn(tok.encode(), objects)     # ignored, so kept
+        self.assertNotIn(aws, ta.read_text(encoding="utf-8"))  # Claude Code's copy, for an ended session
+        self.assertIn("nothing open", self.e.tool(root, "record_secrets.py").stdout)
+        # it comes up again in a later turn: the copy is redacted on the way in
+        self.e.transcript(root, SID_A, [user(f"again {aws}", "2026-01-02T00:01:00Z")])
+        self.e.tool(root, "capture_session.py", input=hook(SID_A, ta, "SessionEnd"))
+        copied = (rec / "sessions" / f"2026-01-02_{SID_A}.jsonl").read_text(encoding="utf-8")
+        self.assertNotIn(aws, copied)
+        self.assertIn("[REDACTED:", copied)
+        self.e.tool(root, "kit.py", "check")
+
 
 if __name__ == "__main__":
     unittest.main()
