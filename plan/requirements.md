@@ -46,6 +46,13 @@ others are added or removed.
   captured. [I-0003]
 - **R-008 (expectation).** Intent captured in a worktree that never lands remains on
   main. [I-0004]
+- **R-015 (hard).** Committing to main doesn't rewrite the session's branch unless the
+  project opts in. [I-0007]
+- **R-016 (hard).** Adopting an existing repository adds nothing that changes how git
+  treats the files already there (line endings, ignore rules for its folders). Those are
+  suggested instead. [I-0007]
+- **R-017 (hard).** The "already captured" check matches whole messages and errs toward
+  showing a message as uncaptured. [I-0007]
 
 ## The record
 

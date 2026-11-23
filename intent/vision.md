@@ -57,6 +57,9 @@ which starts its own record empty. [I-0006]
   [I-0003]
 - **Intent captured in a worktree that never lands still reaches main.** That's accepted:
   most worktrees will land. [I-0004]
+- **A branch isn't synced automatically when something goes to main.** A project can opt
+  in. [I-0007] Syncing rewrites a linear branch, which would force-push any branch that's
+  already pushed or has a pull request.
 
 ## The record of sessions
 
