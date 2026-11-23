@@ -50,8 +50,8 @@ which starts its own record empty. [I-0006]
   [I-0003] The answers are cited from the configuration, not entered as the project's
   intent: a project's log doesn't open with record-keeping. [I-0006] Setup choices the
   owner changes later are captured as intent like anything else. [I-0005] Onboarding
-  checks that Python is available, since the tools need it. It also asks for the
-  record's git remote: an existing one, a new one created then, or none. [I-0008]
+  checks that Python is available, since the tools need it. It also asks where the
+  record lives: an existing git remote, a new one created then, or none. [I-0008]
 
 ## How it handles parallel work
 
@@ -73,6 +73,10 @@ which starts its own record empty. [I-0006]
   chance of leaking something by accident. [I-0004]
 - **It can still have a remote**, so one or more people can merge, push and pull it for
   traceability and after-the-fact review. [I-0004]
+- **Keeping it local, with no remote, is a full option**, not a step short of having one.
+  It's somewhat safer for privacy. [I-0009]
+- **A remote can be on any git server.** It doesn't mean GitHub, and the kit doesn't use
+  GitHub's `gh` tool. [I-0009]
 
 ## Intent about the method
 

@@ -39,8 +39,8 @@ others are added or removed.
   message, and aren't added to the project's intent log. [I-0006]
 - **R-018 (target).** Onboarding checks for a Python that can run the tools before
   setting anything up, and stops if there isn't one. [I-0008]
-- **R-019 (target).** Onboarding asks for the record's git remote, and allows an existing
-  one, a newly created one, or none. [I-0008]
+- **R-019 (target).** Onboarding asks where the record lives, and allows an existing git
+  remote, a newly created one, or local only with no remote. [I-0008, I-0009]
 
 ## Parallel work
 
@@ -64,6 +64,10 @@ others are added or removed.
   project repository. [I-0004]
 - **R-010 (target).** The record can have a remote and be merged, pushed and pulled.
   [I-0004]
+- **R-020 (hard).** A record with no remote is a supported setup: nothing reports it as
+  a problem or prompts to add one. [I-0009]
+- **R-021 (hard).** Record remotes work with any git server, through plain git. The kit
+  uses no host-specific tool, `gh` included. [I-0009]
 
 ## The intent log
 

@@ -1,7 +1,7 @@
 ---
 id: D-0008
 date: 2026-11-23
-status: active
+status: replaced-by D-0009
 from: [I-0008, I-0004]
 ---
 # The record's remote is set up by one command, and its URL stays out of the project
