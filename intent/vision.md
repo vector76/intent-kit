@@ -51,7 +51,9 @@ which starts its own record empty. [I-0006]
   intent: a project's log doesn't open with record-keeping. [I-0006] Setup choices the
   owner changes later are captured as intent like anything else. [I-0005] Onboarding
   checks that Python is available, since the tools need it. It also asks where the
-  record lives: an existing git remote, a new one created then, or none. [I-0008]
+  record lives: an existing git remote, a new one created then, or none. [I-0008] And it
+  asks what to call the person, suggesting a name inferred from Claude Code's settings,
+  so most people just accept it. [I-0012]
 
 ## How it handles parallel work
 
@@ -92,6 +94,32 @@ which starts its own record empty. [I-0006]
   ever wanted, it can be produced from the log on request. That isn't planned or
   suggested; it's just available. [I-0005]
 
+## According to whom
+
+- **Intent is traced back to people.** Several people may record intent. When intent
+  conflicts or doesn't fit together, the people involved can find each other and talk,
+  to help them reach agreement. [I-0011]
+- **It's recorded even when everything agrees.** Most intent will affirm other intent or
+  be about something else, but the "according to whom" is still kept. [I-0011]
+- **It covers sessions too**, and other entries: decisions say who agreed to them,
+  lessons who found the problem. [I-0011, I-0013]
+- **It isn't proof.** No signatures or bulletproof provenance, just enough to know whom
+  to talk to. [I-0011]
+- **A person's name comes from onboarding**, with a default inferred from Claude Code's
+  settings. [I-0012]
+- **A session is one person's.** Two people never share one, and one is never taken
+  over. The kit assumes this. [I-0013]
+- **Relayed intent records who said it and whose wishes it claims.** It defaults to
+  non-impersonation: words are never recorded as anyone but the speaker's. A relayed
+  wish counts as the speaker's view of what the other person wants. [I-0012, I-0013]
+- **Agreeing is just a new entry.** [I-0012]
+- **The projections read as consensus.** Requirements don't cite authors, because the
+  projections of intent are treated as what people agree on. Where there's no consensus,
+  the vision identifies the authors and their different views. [I-0012]
+- **Existing intent entries are attributed to Jamie Kawabata.** [I-0012] Computronium
+  doesn't need updating and stays on the older, unattributed style. [I-0013]
+- **Two people with the same name are ignored for now.** [I-0013]
+
 ## Open questions and tensions
 
 - **Which configuration options onboarding should offer.** The owner named the record's
@@ -105,3 +133,8 @@ which starts its own record empty. [I-0006]
 - **Moving the existing projects onto the kit.** Projects already using the earlier
   version of the machinery could be upgraded to it, or left as they are. The owner has
   asked what migrating would gain (I-0008) and hasn't decided.
+- **Whether intent entries that answer the agent's questions should show the
+  questions.** An answer like "1: yes header" (I-0013) only makes sense next to what was
+  asked, and the record holding the question may be on another machine. The agent
+  proposed adding the questions to such entries, as a block marked as the agent's words.
+  The owner hasn't answered.

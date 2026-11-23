@@ -83,3 +83,27 @@ others are added or removed.
 
 - **R-011 (hard).** Project intent and method intent go in one log, with no marks or
   separation. [I-0005]
+
+## Authorship
+
+- **R-027 (hard).** Every intent entry records the person whose words it is, including
+  intent that agrees with or is unrelated to other intent. [I-0011]
+- **R-028 (hard).** Every session in the record is attributed to one person. [I-0011,
+  I-0013]
+- **R-029 (target).** Decisions say who agreed to them, and lessons who found the
+  problem. [I-0011, I-0013]
+- **R-030 (expectation).** Attribution is taken on trust: no signatures or verification.
+  [I-0011]
+- **R-031 (target).** Onboarding asks what to call the person, offering a default
+  inferred from Claude Code's settings that can usually just be accepted. [I-0012]
+- **R-032 (hard).** Relayed intent records both the speaker and the person whose wishes
+  it claims. Words are never recorded as anyone but the speaker's, and a relayed wish
+  counts as the speaker's view of what the other person wants. [I-0012, I-0013]
+- **R-033 (hard).** Requirements and the vision are written as the consensus and name no
+  one. Where intent differs, the vision names who holds each view. [I-0012]
+- **R-034 (hard).** Agreeing with intent is a new entry. [I-0012]
+- **R-035 (expectation).** A session is never shared by two people or taken over.
+  [I-0013]
+- **R-036 (target).** Entries from before authorship are attributed only with their
+  author's approval, by adding a header line, never by changing the words. The kit's own
+  are attributed to the owner. [I-0012, I-0013]
