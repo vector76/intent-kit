@@ -1,0 +1,17 @@
+{
+  "kit_version": "0.1.0",
+  "project": "intent-kit",
+  "summary": "A reusable setup that bootstraps new or existing projects into traceable, intent-driven development: verbatim intent, current-view projections, and a private session record.",
+  "main_branch": "main",
+  "tools_dir": "tools",
+  "visibility": "confidential",
+  "layers": [],
+  "stances": [],
+  "landing": "linear",
+  "push_on_land": true,
+  "agents": "claude-only",
+  "backplane": false,
+  "record_commit_every": 10,
+  "not_human_prefixes": [],
+  "sources": {}
+}

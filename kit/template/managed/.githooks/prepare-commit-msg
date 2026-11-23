@@ -1,0 +1,19 @@
+#!/bin/sh
+# Append "Session: <claude session id>" to commit messages, linking each commit
+# to the transcript (in the private record repo) of the session that made it.
+# The id comes from CLAUDE_CODE_SESSION_ID, which Claude Code sets for each session's
+# commands, so it is right even when several sessions share one checkout.
+# Managed by intent-kit.
+# Fallback: .claude/current-session, written by the SessionStart hook; with two
+# sessions in one checkout, the most recently started one wins there.
+msg_file="$1"
+source="$2"
+[ "$source" = "merge" ] && exit 0
+sid="$CLAUDE_CODE_SESSION_ID"
+if [ -z "$sid" ]; then
+  id_file="$(git rev-parse --show-toplevel)/.claude/current-session"
+  [ -f "$id_file" ] && sid="$(tr -d '\r\n' < "$id_file")"
+fi
+[ -n "$sid" ] || exit 0
+git interpret-trailers --parse "$msg_file" | grep -q "^Session: " && exit 0
+git interpret-trailers --in-place --trailer "Session: $sid" "$msg_file"
