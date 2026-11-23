@@ -27,6 +27,7 @@ others are added or removed.
 
 - **R-012 (hard).** What ships contains no record of developing the kit: a new project's
   intent log, decisions and lessons start empty. [I-0006]
+- **R-038 (target).** The kit ships as version 1.0.0. [I-0015]
 - **R-013 (target).** The working rules reach a project as a file its `CLAUDE.md`
   imports, not as text written into `CLAUDE.md`. [I-0006]
 

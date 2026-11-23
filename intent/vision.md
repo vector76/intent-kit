@@ -24,7 +24,7 @@ imported into them. [I-0001]
 
 It distills the machinery first built for earlier projects (the intent log, the
 requirements, session recording and the scripts behind them), including the
-improvements found while using it. [I-0001] Improvements go from the kit to projects
+improvements found while using it. [I-0001] It ships as version 1.0.0. [I-0015] Improvements go from the kit to projects
 (by upgrading them). A fix found while working in a project doesn't have to be fed back
 into the kit directly. [I-0008]
 
@@ -138,7 +138,8 @@ which starts its own record empty. [I-0006]
   ("everything else I think makes sense", I-0004). It hasn't been confirmed item by item.
 - **The kit's own settings are the kit's defaults, not the owner's choices.** That covers
   visibility (confidential), landing (linear) and the rest. Whether the kit may ever be
-  published is open, as is its name: "intent-kit" is a placeholder.
+  published is open, as is its name: "intent-kit" is a placeholder. The owner wants to
+  ship it (I-0015); whether shipping includes publishing it hasn't been said.
 - **Moving the existing projects onto the kit.** Projects already using the earlier
   version of the machinery could be upgraded to it, or left as they are. The owner has
   asked what migrating would gain (I-0008) and hasn't decided.

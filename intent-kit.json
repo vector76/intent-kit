@@ -1,5 +1,5 @@
 {
-  "kit_version": "0.7.0",
+  "kit_version": "1.0.0",
   "project": "intent-kit",
   "summary": "A reusable setup that bootstraps new or existing projects into traceable, intent-driven development: verbatim intent, current-view projections, and a private session record.",
   "main_branch": "main",
