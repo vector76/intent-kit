@@ -24,7 +24,8 @@ Choices (see ONBOARDING.md for what each means; the agent asks the owner):
 upgrade compares the project's kit-managed files (the tools, the commit hook and
 METHOD.md) with this kit and shows what differs; --apply replaces them, adds any
 missing starter files (say, for a layer turned on since), records the kit version
-and re-renders CLAUDE.md's generated section. Project content is never touched.
+and re-renders METHOD-RULES.md (moving an older inlined rules section out of
+CLAUDE.md). Project content is never touched.
 """
 import argparse
 import difflib
@@ -36,7 +37,7 @@ from pathlib import Path
 KIT = Path(__file__).resolve().parent
 MANAGED = KIT / "template" / "managed"
 STARTER = KIT / "template" / "starter"
-PHILOSOPHY = KIT.parent / "PHILOSOPHY.md"
+PHILOSOPHY = KIT / "PHILOSOPHY.md"
 VERSION = (KIT / "VERSION").read_text(encoding="utf-8").strip()
 CONFIG_NAME = "intent-kit.json"
 TOOL_FILES = ["kitlib.py", "capture_session.py", "extract_human_messages.py", "to_main.py",
@@ -106,8 +107,7 @@ def readme_text(cfg: dict) -> str:
 def claude_text(cfg: dict) -> str:
     return (f"# {cfg['project']} — working rules for agents\n\n"
             f"{cfg.get('summary') or ''}\n\n"
-            "## Project rules\n\n*(Project-specific working rules go here, outside the generated "
-            "section below.)*\n")
+            "## Project rules\n\n*(Project-specific working rules go here.)*\n")
 
 
 def merged_settings(path: Path, cfg: dict) -> str | None:
@@ -184,6 +184,8 @@ def init(a):
 
     # --- what's in the way? nothing is written until this is empty ---
     blockers = []
+    if (root / "METHOD-RULES.md").exists():
+        blockers.append("METHOD-RULES.md exists; the kit generates that file")
     if (root / CONFIG_NAME).exists():
         blockers.append(f"{CONFIG_NAME} exists: this project is already set up (use `upgrade`)")
     for rel, src in managed_files(cfg).items():
@@ -244,7 +246,7 @@ def init(a):
         print(f"  keep   {rel} (exists; left as it is)")
     print(f"  record/ as its own git repo{' (exists)' if (root / 'record' / '.git').exists() else ''}")
     print("  git config core.hooksPath .githooks")
-    print("  render the intent-kit section of CLAUDE.md")
+    print("  render METHOD-RULES.md and import it from CLAUDE.md (one @METHOD-RULES.md line)")
     if a.dry_run:
         print("bootstrap: dry run; nothing was changed")
         return
@@ -281,10 +283,11 @@ def init(a):
     if is_repo:
         print(f"  - review and commit the scaffold on {cfg['main_branch']} (git status)")
         print(f"  - sweep this project's earlier sessions into the record: python {t}/capture_session.py --all --commit")
-    print(f"  - capture the owner's onboarding answers and first braindump as intent: "
+    print(f"  - cite the owner's onboarding answers in {CONFIG_NAME} (not as intent): "
+          f"python {t}/kit.py cite <session-id> --msg <n> --keys <settings>")
+    print(f"  - capture the owner's first words about the project as I-0001: "
           f"python {t}/extract_human_messages.py <session-id> --list")
-    print(f"  - cite those entries under \"sources\" in {CONFIG_NAME}, write intent/vision.md, "
-          f"then python {t}/to_main.py docs -m \"...\"")
+    print(f"  - write intent/vision.md from them, then python {t}/to_main.py docs -m \"...\"")
 
 
 def upgrade(a):
@@ -333,7 +336,7 @@ def upgrade(a):
     cfg_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8", newline="\n")
     run_tool(root, cfg, "render")
     print(f"bootstrap: updated {len(changed) + len(new_starters)} file(s) to kit {VERSION}. Commit the tools "
-          f"as usual; publish {CONFIG_NAME} and CLAUDE.md with tools/to_main.py docs.")
+          f"as usual; publish {CONFIG_NAME}, METHOD-RULES.md and CLAUDE.md with tools/to_main.py docs.")
     run_tool(root, cfg, "check")
 
 

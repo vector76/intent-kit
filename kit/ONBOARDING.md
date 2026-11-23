@@ -2,10 +2,15 @@
 
 Instructions for the agent that brings a project into this method, new or existing.
 The owner usually starts it by saying something like *"set this project up with the
-intent kit at `<path>`; read its ONBOARDING.md"*. Run the session **in the project's
-own folder** (its main checkout), so the session's transcript belongs to that project.
+intent kit at `<kit>`; read its ONBOARDING.md"*, where `<kit>` is this folder. Run the
+session **in the project's own folder** (its main checkout), so the session's transcript
+belongs to that project.
 
 Read [PHILOSOPHY.md](PHILOSOPHY.md) first. You'll be explaining it.
+
+What the project gets is the method, not a history: the tools, the starter documents,
+`METHOD.md` (the philosophy) and a generated `METHOD-RULES.md` that its `CLAUDE.md`
+imports. Its intent log, decisions and lessons start empty, and fill with its own.
 
 ## 1. Look before asking
 
@@ -21,15 +26,15 @@ Read [PHILOSOPHY.md](PHILOSOPHY.md) first. You'll be explaining it.
 
 ## 2. Ask the owner
 
-Ask conversationally, a few questions at a time, and say what each choice changes. The
-owner's answers are the project's first intent, and you'll capture them verbatim, so let
-them answer in their own words. Don't fill answers in for them. Where there's a default,
-say what it is.
+Ask conversationally, a few questions at a time, and say what each choice changes. Let
+the owner answer in their own words: the answers are cited from the config by session
+and message, so their exact words stay in the record. Don't fill answers in for them.
+Where there's a default, say what it is.
 
 | Choice | Options | What it changes |
 |---|---|---|
 | Name and a one-line summary | free text | README, CLAUDE.md, vision heading |
-| Visibility | **confidential** (default) or publishable | Privacy rule in CLAUDE.md: confidential means no public remote and generic web queries; publishable means keeping personal details and home-directory paths out of the repo |
+| Visibility | **confidential** (default) or publishable | Privacy rule: confidential means no public remote and generic web queries; publishable means keeping personal details and home-directory paths out of the repo |
 | Layers | any of research (N-), concepts (C-), experiments (E-) | Folders, numbered kinds, and the rules that go with them |
 | Stances | wide-search, forward-plausibility, or none | Extra rules: don't narrow the search early; judge plausibility by enabling milestones rather than consensus |
 | Landing | **linear** (rebase and fast-forward, default) or merge | How `land.py` and `sync.py` behave |
@@ -47,7 +52,7 @@ Some things are fixed, not choices; say so if they come up:
 ## 3. Dry run, then bootstrap
 
 ```
-python <kit>/kit/bootstrap.py init <project> --name "..." --summary "..." \
+python <kit>/bootstrap.py init <project> --name "..." --summary "..." \
     [--visibility publishable] [--layers research,experiments] [--stances wide-search] \
     [--landing merge] [--no-push] [--agents any] [--backplane] [--tools-dir tools/kit] --dry-run
 ```
@@ -56,34 +61,45 @@ Show the owner the list of what will be added and merged. Then run it again with
 `--dry-run`.
 - **New folder:** it runs `git init`, writes everything, creates `record/` as its own
   repo, sets `core.hooksPath` and commits the scaffold on main.
-- **Existing repository:** it writes and merges but doesn't commit. Show `git status`.
-  With the owner's OK, commit the scaffold on the main branch.
+- **Existing repository:** it writes and merges but doesn't commit. Its `CLAUDE.md` keeps
+  everything it had, plus a short section ending in `@METHOD-RULES.md`. Show
+  `git status`. With the owner's OK, commit the scaffold on the main branch.
 
 The hooks take effect from the **next** session in this folder. This session's transcript
 is still picked up: the next session's start, or a sweep, copies it.
 
-## 4. Capture the onboarding as intent
+## 4. Record the answers in the config, not the intent log
+
+Setting the project up isn't intent about the project, so the onboarding answers don't
+become intent entries. The config cites them instead:
 
 ```
-python tools/capture_session.py --all --commit          # this and any earlier sessions into the record
+python tools/capture_session.py --all --commit            # this and any earlier sessions into the record
 python tools/extract_human_messages.py <this session id> --list
-python tools/extract_human_messages.py <this session id> --slug onboarding --msg <n> [...]
+python tools/kit.py cite <this session id> --msg 3 --keys visibility
+python tools/kit.py cite <this session id> --msg 4 5 --keys layers,landing
 ```
 
-The session id is in the `CLAUDE_CODE_SESSION_ID` environment variable. Capture every
-message where the owner stated, refined or changed intent, about the project or about how
-it's run. Re-run `--list` and check that each unmarked message is either captured or not
-intent ("go ahead", "looks good").
+The session id is in the `CLAUDE_CODE_SESSION_ID` environment variable. `cite` records
+each message's session and timestamp under `"sources"` in `intent-kit.json`. Then
+`--list` marks those messages `c`.
+
+The project's intent log starts with **the owner's first words about the project
+itself**. If they've already said what it is in this session, capture those messages:
+
+```
+python tools/extract_human_messages.py <this session id> --slug first-braindump --msg 6 7
+```
+
+If they haven't, ask for their first braindump and capture it the same way. A message
+that mixes setup answers with intent about the project is intent: capture it, and cite
+its entry id for the setting as well. Re-run `--list` and check that every message is
+marked (`*` or `c`) or isn't intent ("go ahead", "looks good").
 
 Then:
-- In `intent-kit.json`, set `"sources"` to the entries behind the choices, e.g.
-  `{"visibility": ["I-0001"], "layers": ["I-0001", "I-0002"]}`.
 - Write `intent/vision.md` from the entries, with each point citing its source and any
-  contradictions under *Open questions and tensions*. If the owner has already said what
-  the project is, write that as well; otherwise ask for their first braindump and capture
-  it the same way.
-- `python tools/kit.py render`, then `python tools/to_main.py docs -m "Vision and config
-  from onboarding"`.
+  contradictions under *Open questions and tensions*.
+- `python tools/to_main.py docs -m "Vision and config from onboarding"`.
 - `python tools/kit.py check` must pass.
 
 ## 5. Existing projects: history
@@ -101,12 +117,13 @@ Then:
 
 ## 6. Later
 
-- Change a choice: the owner says so, the message is captured as intent, the agent edits
-  `intent-kit.json` (updating `"sources"`), runs `tools/kit.py render` and publishes with
-  `to_main.py docs`. If a layer is turned on, `bootstrap.py upgrade <project> --apply`
-  adds its starter files.
-- New kit version: `python <kit>/kit/bootstrap.py upgrade <project>` shows how the
-  managed files (tools, commit hook, METHOD.md) differ, and `--apply` updates them. It
-  never touches the project's own content.
-- Record remote: `git -C record remote add <name> <private url>`, then push and pull the
-  record like any repo.
+- **Changing a choice.** This is intent, mixed in with everything else the owner says
+  while working: capture it as an entry, as with any intent. Then edit `intent-kit.json`
+  and add the entry's id under `"sources"`, e.g. `"landing": ["I-0012"]`. Run
+  `tools/kit.py render` and publish with `to_main.py docs`. If a layer is turned on,
+  `python <kit>/bootstrap.py upgrade <project> --apply` adds its starter files.
+- **A new kit version.** `python <kit>/bootstrap.py upgrade <project>` shows how the
+  managed files (tools, commit hook, METHOD.md) differ, and `--apply` updates them and
+  re-renders `METHOD-RULES.md`. It never touches the project's own content.
+- **A record remote.** `git -C record remote add <name> <private url>`, then push and pull
+  the record like any repo.

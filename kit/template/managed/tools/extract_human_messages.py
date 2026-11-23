@@ -4,7 +4,8 @@
 Used to create intent-log entries *verbatim*: never retype or paraphrase the
 human's words; extract them.
 
-  List messages (* = its text is already in an intent entry on main):
+  List messages (* = its text is already in an intent entry on main;
+                 c = cited by intent-kit.json as an onboarding answer):
     python tools/extract_human_messages.py <session-id or .jsonl> --list
 
   Write an intent entry from one or more messages:
@@ -28,7 +29,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from kitlib import CFG, SESSIONS, find_transcript, main_file_text, main_tree_files  # noqa: E402
+from kitlib import (CFG, CONFIG_NAME, SESSIONS, find_transcript, main_file_text,  # noqa: E402
+                    main_tree_files)
 
 LOG = "intent/log"
 # Text that arrives as a "user" record but isn't the human's: command wrappers and system
@@ -105,6 +107,16 @@ def captured_text() -> str:
     return "\n".join(_norm(main_file_text(p)) for p in main_tree_files(LOG) if p.endswith(".md"))
 
 
+def cited_messages() -> set[tuple[str, str]]:
+    """(session, timestamp) of messages the config on main cites as sources (onboarding answers)."""
+    try:
+        sources = json.loads(main_file_text(CONFIG_NAME) or "{}").get("sources", {})
+    except json.JSONDecodeError:
+        return set()
+    return {(r.get("session", ""), r.get("message", "")) for refs in sources.values()
+            for r in refs if isinstance(r, dict)}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("transcript")
@@ -117,14 +129,21 @@ def main():
 
     msgs = human_messages(resolve(a.transcript))
     if a.list or not a.slug:
-        done = captured_text()
-        n_done = 0
-        for i, (ts, _, text) in enumerate(msgs, 1):
-            mark = "*" if _norm(text) and _norm(text) in done else " "
-            n_done += mark == "*"
+        done, cited = captured_text(), cited_messages()
+        n_done = n_cited = 0
+        for i, (ts, sid, text) in enumerate(msgs, 1):
+            if _norm(text) and _norm(text) in done:
+                mark = "*"
+                n_done += 1
+            elif (sid, ts) in cited:
+                mark = "c"
+                n_cited += 1
+            else:
+                mark = " "
             print(f"{i:3d}{mark} {ts[:19]}  {text[:90].replace(chr(10), ' ')}")
-        print(f"\n{n_done} of {len(msgs)} message(s) are already in an intent entry on main (*). "
-              "Not every message is intent; check each unmarked one.")
+        print(f"\n{n_done} of {len(msgs)} message(s) are in an intent entry on main (*)"
+              + (f", {n_cited} are cited by {CONFIG_NAME} as setup answers (c)" if n_cited else "")
+              + ". Not every message is intent; check each unmarked one.")
         return
 
     if not a.msg:

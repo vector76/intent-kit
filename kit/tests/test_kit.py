@@ -95,16 +95,24 @@ class KitTest(unittest.TestCase):
 
     def test_new_project(self):
         root = self.new_project("proj", "--layers", "research,experiments", "--stances", "wide-search")
-        for rel in ["CLAUDE.md", "README.md", "METHOD.md", "intent-kit.json", "intent/vision.md",
-                    "plan/requirements.md", "research/README.md", "experiments/README.md",
+        for rel in ["CLAUDE.md", "README.md", "METHOD.md", "METHOD-RULES.md", "intent-kit.json",
+                    "intent/vision.md", "plan/requirements.md", "research/README.md", "experiments/README.md",
                     "tools/to_main.py", ".githooks/prepare-commit-msg", ".claude/settings.json"]:
             self.assertTrue((root / rel).is_file(), rel)
         self.assertFalse((root / "concepts").exists())
+        # the method ships; the kit's own record doesn't
+        self.assertEqual(self.main_files(root, "intent/log"), [])
+        self.assertEqual(self.main_files(root, "plan/lessons"), ["plan/lessons/README.md"])
+        self.assertEqual(self.main_files(root, "plan/decisions"), ["plan/decisions/README.md"])
+        self.assertEqual((root / "METHOD.md").read_bytes(), (KIT / "PHILOSOPHY.md").read_bytes())
         claude = (root / "CLAUDE.md").read_text(encoding="utf-8")
-        self.assertIn("Experiments close the loop", claude)
-        self.assertIn("Don't narrow the search early", claude)
-        self.assertNotIn("Judge plausibility", claude)
-        self.assertIn("Confidential.", claude)
+        self.assertIn("\n@METHOD-RULES.md\n", claude)
+        self.assertLess(len(claude), 900)
+        rules = (root / "METHOD-RULES.md").read_text(encoding="utf-8")
+        self.assertIn("Experiments close the loop", rules)
+        self.assertIn("Don't narrow the search early", rules)
+        self.assertNotIn("Judge plausibility", rules)
+        self.assertIn("Confidential.", rules)
         self.assertTrue((root / "record" / ".git").is_dir())
         self.assertEqual(self.e.git(root, "status", "--porcelain").stdout.strip(), "")
         self.assertEqual(self.e.git(root, "ls-files", "record").stdout.strip(), "")
@@ -267,8 +275,10 @@ class KitTest(unittest.TestCase):
         self.e.py(BOOTSTRAP, "init", root, "--name", "Old", "--tools-dir", "tools/kit", "--visibility", "publishable")
         claude = (root / "CLAUDE.md").read_text(encoding="utf-8")
         self.assertTrue(claude.startswith("# Old project\n\nKeep this."))
-        self.assertIn("python tools/kit/to_main.py docs", claude)
-        self.assertIn("Publishable.", claude)
+        self.assertTrue(claude.endswith("\n@METHOD-RULES.md\n"))
+        rules = (root / "METHOD-RULES.md").read_text(encoding="utf-8")
+        self.assertIn("python tools/kit/to_main.py docs", rules)
+        self.assertIn("Publishable.", rules)
         s = json.loads((root / ".claude" / "settings.json").read_text(encoding="utf-8"))
         self.assertEqual(s["permissions"], {"allow": ["Bash(ls)"]})
         self.assertEqual(len(s["hooks"]["Stop"]), 2)
@@ -309,8 +319,41 @@ class KitTest(unittest.TestCase):
         self.assertEqual((root / "tools" / "sync.py").read_bytes(),
                          (KIT / "template/managed/tools/sync.py").read_bytes())
         self.assertTrue((root / "concepts" / "README.md").is_file())
-        self.assertIn("C-0001", (root / "CLAUDE.md").read_text(encoding="utf-8"))
+        self.assertIn("C-0001", (root / "METHOD-RULES.md").read_text(encoding="utf-8"))
         self.assertIn("up to date", self.e.py(BOOTSTRAP, "upgrade", root).stdout)
+
+    def test_upgrade_moves_inlined_rules_out(self):
+        root = self.new_project()
+        old = ("# Proj\n\nOwn rules.\n\n<!-- intent-kit:begin -->\n## How this project keeps its record\n"
+               "old generated text\n<!-- intent-kit:end -->\n\n## Later section\n\nKeep me too.\n")
+        (root / "CLAUDE.md").write_text(old, encoding="utf-8")
+        self.e.tool(root, "kit.py", "render")
+        claude = (root / "CLAUDE.md").read_text(encoding="utf-8")
+        self.assertNotIn("intent-kit:begin", claude)
+        self.assertNotIn("old generated text", claude)
+        self.assertIn("Own rules.", claude)
+        self.assertIn("Keep me too.", claude)
+        self.assertEqual(claude.count("@METHOD-RULES.md"), 1)
+        self.e.tool(root, "kit.py", "render")  # idempotent
+        self.assertEqual((root / "CLAUDE.md").read_text(encoding="utf-8"), claude)
+
+    def test_onboarding_answers_are_cited_not_captured(self):
+        root = self.new_project()
+        self.e.transcript(root, SID_A, [
+            user("Keep it confidential.", "2026-01-02T00:00:01Z"),
+            user("It's a tool for sorting seeds.", "2026-01-02T00:00:02Z"),
+        ])
+        self.e.tool(root, "kit.py", "cite", SID_A, "--msg", "1", "--keys", "visibility")
+        src = json.loads((root / "intent-kit.json").read_text())["sources"]
+        self.assertEqual(src, {"visibility": [{"session": SID_A, "message": "2026-01-02T00:00:01Z"}]})
+        self.e.tool(root, "to_main.py", "docs", "-m", "Cite onboarding")
+        self.e.tool(root, "extract_human_messages.py", SID_A, "--slug", "what-it-is", "--msg", "2")
+        out = self.e.tool(root, "extract_human_messages.py", SID_A, "--list").stdout
+        self.assertRegex(out, r"1c .*confidential")
+        self.assertRegex(out, r"2\* .*sorting seeds")
+        self.assertEqual(self.main_files(root, "intent/log"), ["intent/log/I-0001-what-it-is.md"])
+        r = self.e.tool(root, "kit.py", "cite", SID_A, "--msg", "1", "--keys", "nonsense", ok=False)
+        self.assertNotEqual(r.returncode, 0)
 
 
 if __name__ == "__main__":

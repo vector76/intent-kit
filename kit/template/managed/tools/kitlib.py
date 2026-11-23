@@ -207,7 +207,7 @@ def kinds(cfg=None) -> dict:
     return k
 
 
-DOCS = ["intent/vision.md", "plan", CONFIG_NAME, "CLAUDE.md"]  # current-view documents
+DOCS = ["intent/vision.md", "plan", CONFIG_NAME, "CLAUDE.md", "METHOD-RULES.md"]  # current-view documents
 
 
 def is_doc(path: str) -> bool:
