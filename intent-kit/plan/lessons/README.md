@@ -1,7 +1,7 @@
 # Lessons
 
 Short postmortems, one per mistake: `L-0001-short-name.md`, created with
-`python tools/to_main.py lesson --slug short-name --file draft.md`. Agents read these
+`python intent-kit/tools/to_main.py lesson --slug short-name --file draft.md`. Agents read these
 before related work. Append-only. Template:
 
 ```

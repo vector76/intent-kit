@@ -1,7 +1,2 @@
-# intent-kit: the private record is its own repo; local state
-/record/
-/out/
-/.claude/current-session
-/.claude/record-turns/
 /.claude/settings.local.json
 __pycache__/

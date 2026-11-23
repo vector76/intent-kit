@@ -354,7 +354,7 @@ def render(root: Path = REPO) -> bool:
             sp.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8", newline="\n")
             print(f"kit: .claude/settings.json hooks now run {want}, with {SESSION_END_TIMEOUT}s to commit at "
                   "session end")
-    print("kit: publish with tools/to_main.py docs" if changed else "kit: rules already current")
+    print(f"kit: publish with {TOOLS_REL}/to_main.py docs" if changed else "kit: rules already current")
     return changed
 
 
@@ -376,7 +376,7 @@ def cite(session: str, msgs: list[int], keys: list[str], root: Path = REPO):
         have += [r for r in refs if r not in have]
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8", newline="\n")
     print(f"kit: cited {len(refs)} message(s) for {', '.join(keys)} in {CONFIG_NAME} "
-          "(publish with tools/to_main.py docs)")
+          f"(publish with {TOOLS_REL}/to_main.py docs)")
 
 
 RECORD_README = """# Record (private)

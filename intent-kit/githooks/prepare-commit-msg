@@ -4,14 +4,15 @@
 # The id comes from CLAUDE_CODE_SESSION_ID, which Claude Code sets for each session's
 # commands, so it is right even when several sessions share one checkout.
 # Managed by intent-kit.
-# Fallback: .claude/current-session, written by the SessionStart hook; with two
-# sessions in one checkout, the most recently started one wins there.
+# Fallback: <kit folder>/.state/current-session, written by the SessionStart hook; with
+# two sessions in one checkout, the most recently started one wins there. This hook lives
+# in <kit folder>/githooks/, and git runs it from the checkout's top folder.
 msg_file="$1"
 source="$2"
 [ "$source" = "merge" ] && exit 0
 sid="$CLAUDE_CODE_SESSION_ID"
 if [ -z "$sid" ]; then
-  id_file="$(git rev-parse --show-toplevel)/.claude/current-session"
+  id_file="$(dirname "$0")/../.state/current-session"
   [ -f "$id_file" ] && sid="$(tr -d '\r\n' < "$id_file")"
 fi
 [ -n "$sid" ] || exit 0

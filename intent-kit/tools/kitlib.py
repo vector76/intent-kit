@@ -1,7 +1,13 @@
 """Shared helpers for the intent-kit tools.
 
 Managed by intent-kit: `bootstrap.py upgrade` replaces this file. Project-specific
-choices live in intent-kit.json, not here.
+choices live in the kit folder's config.json, not here.
+
+Everything the kit adds to a project lives in one folder (intent-kit/ unless the project
+chose another name at setup): the tools, the commit hook, the config, the intent log, the
+vision and plan, the optional layers and the private record. Only CLAUDE.md's import line
+and the hooks in .claude/settings.json are outside it. The folder is wherever these tools
+are: <repo>/<kit folder>/tools/.
 """
 import json
 import os
@@ -11,7 +17,7 @@ import sys
 from pathlib import Path
 
 TOOLS = Path(__file__).resolve().parent
-CONFIG_NAME = "intent-kit.json"
+KIT_HOME = TOOLS.parent  # this checkout's kit folder
 
 
 def _git(args, cwd, input=None, env=None):
@@ -25,7 +31,20 @@ def _toplevel(path: Path) -> Path | None:
     return Path(out).resolve() if r.returncode == 0 and out else None
 
 
-REPO = _toplevel(TOOLS) or TOOLS.parent  # this checkout (may be a worktree)
+REPO = _toplevel(TOOLS) or KIT_HOME.parent  # this checkout (may be a worktree)
+try:
+    KIT_DIR = KIT_HOME.relative_to(REPO).as_posix()  # the kit folder, relative to the repo: "intent-kit"
+except ValueError:
+    KIT_DIR = "intent-kit"
+
+
+def kp(rel: str) -> str:
+    """A repo-relative path inside the kit folder."""
+    return f"{KIT_DIR}/{rel}"
+
+
+CONFIG_NAME = kp("config.json")
+TOOLS_REL = kp("tools")
 
 
 def _main_checkout() -> Path:
@@ -43,7 +62,6 @@ DEFAULTS = {
     "project": "",
     "summary": "",
     "main_branch": "main",
-    "tools_dir": "tools",
     "python": "python",                # the command the hooks and rules use to run the tools
     "visibility": "confidential",      # confidential | publishable
     "layers": [],                      # research, concepts, experiments
@@ -70,11 +88,12 @@ def load_config(root: Path | None = None) -> dict:
 
 CFG = load_config()
 TARGET = CFG["main_branch"]
-RECORD = MAIN / "record"
+RECORD = MAIN / KIT_DIR / "record"
 SESSIONS = RECORD / "sessions"
 KNOWN_DIRS = RECORD / "transcript-dirs.txt"       # transcript folders seen by the hooks
-CURRENT = REPO / ".claude" / "current-session"     # per checkout: each worktree tags its own commits
-TURNS = REPO / ".claude" / "record-turns"          # per-session turn counts
+STATE = REPO / KIT_DIR / ".state"                  # ignored, per checkout
+CURRENT = STATE / "current-session"                # each worktree tags its own commits
+TURNS = STATE / "record-turns"                     # per-session turn counts
 
 
 def git(*args, cwd=None, check=False, input=None, env=None, tool="kit"):
@@ -179,13 +198,14 @@ def find_transcript(sid: str) -> Path | None:
 def record_problem(need_repo: bool = True) -> str | None:
     """None if record/ is safely private (ignored by this repo, not tracked by it) and, with
     need_repo, set up as its own git repository."""
-    if git("ls-files", "--", "record", cwd=MAIN).stdout.strip():
-        return "record/ is tracked by the project repository"
-    if git("check-ignore", "-q", "--no-index", "record/sessions/x.jsonl", cwd=MAIN).returncode != 0:
-        return "record/ is not ignored by the project's .gitignore"
+    rec = kp("record")
+    if git("ls-files", "--", rec, cwd=MAIN).stdout.strip():
+        return f"{rec}/ is tracked by the project repository"
+    if git("check-ignore", "-q", "--no-index", kp("record/sessions/x.jsonl"), cwd=MAIN).returncode != 0:
+        return f"{rec}/ is not ignored ({KIT_DIR}/.gitignore should list /record/)"
     if need_repo and not (RECORD / ".git").exists():
-        return ("record/ is not set up as its own git repository (in the main checkout: "
-                "python tools/kit.py record [--remote <private url>])")
+        return (f"{rec}/ is not set up as its own git repository (in the main checkout: "
+                f"python {TOOLS_REL}/kit.py record [--remote <private url>])")
     return None
 
 
@@ -280,16 +300,17 @@ LAYER_KINDS = {  # layer name in the config: kind
 
 
 def kinds(cfg=None) -> dict:
+    """kind: (repo-relative folder, ID prefix, digits, entry is a folder)."""
     cfg = cfg or CFG
     k = dict(BASE_KINDS)
     for layer in cfg.get("layers", []):
         if layer in LAYER_KINDS:
             name, spec = LAYER_KINDS[layer]
             k[name] = spec
-    return k
+    return {name: (kp(folder), *rest) for name, (folder, *rest) in k.items()}
 
 
-DOCS = ["intent/vision.md", "plan", CONFIG_NAME, "CLAUDE.md", "METHOD-RULES.md"]  # current-view documents
+DOCS = [kp("intent/vision.md"), kp("plan"), CONFIG_NAME, "CLAUDE.md", kp("METHOD-RULES.md")]  # current-view documents
 
 
 def is_doc(path: str) -> bool:

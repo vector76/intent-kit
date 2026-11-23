@@ -15,8 +15,8 @@ in the same log, unmarked, and the vision and `CLAUDE.md` each take what they ne
 Extract it from the session transcript; never retype or paraphrase it:
 
 ```
-python tools/extract_human_messages.py <session-id> --list
-python tools/extract_human_messages.py <session-id> --slug short-name --msg 4 5 --tags cost-model
+python intent-kit/tools/extract_human_messages.py <session-id> --list
+python intent-kit/tools/extract_human_messages.py <session-id> --slug short-name --msg 4 5 --tags cost-model
 ```
 
 `--list` marks with `*` each message whose text is already in an entry on main. The
@@ -31,7 +31,7 @@ Some messages only make sense next to the question they answer ("1: yes, 2: no")
 those, add the questions the words depend on:
 
 ```
-python tools/extract_human_messages.py <session-id> --slug short-name --msg 9 \
+python intent-kit/tools/extract_human_messages.py <session-id> --slug short-name --msg 9 \
     --question "Keep a separate attribution file, or add an author: line to each entry?"
 ```
 
@@ -45,7 +45,7 @@ needs. Long or awkward text can go in a file (`--question-file`).
 
 Each entry's `author:` is the person who typed the words, taken from the session they
 came from: a session is one person's. Each clone is told once who works in it
-(`python tools/kit.py whoami --set "<name>"`). That's for knowing whom to talk to
+(`python intent-kit/tools/kit.py whoami --set "<name>"`). That's for knowing whom to talk to
 when intent conflicts, not proof of identity.
 
 - **Words are never recorded as someone else's.** When someone passes on another
@@ -57,9 +57,9 @@ when intent conflicts, not proof of identity.
   people's intent differs, the vision's open questions say who holds each view.
 
 If something is too candid even for this repo, put it in the private record
-(`record/notes/`) and give it an entry with a one-line neutral summary and the record
-path (`python tools/to_main.py intent --slug ... --file draft.md`), so the trace
+(`intent-kit/record/notes/`) and give it an entry with a one-line neutral summary and the record
+path (`python intent-kit/tools/to_main.py intent --slug ... --file draft.md`), so the trace
 stays intact.
 
-After adding entries, update `vision.md` (and `plan/requirements.md`, if affected) so it
-shows the new current view, and publish it with `python tools/to_main.py docs -m "..."`.
+After adding entries, update `vision.md` (and `intent-kit/plan/requirements.md`, if affected) so it
+shows the new current view, and publish it with `python intent-kit/tools/to_main.py docs -m "..."`.

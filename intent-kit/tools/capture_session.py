@@ -2,7 +2,7 @@
 """Copy Claude Code session transcripts into the private record repo (record/).
 
 Run automatically by the hooks in .claude/settings.json:
-  SessionStart -> remember the session id (for the commit trailer, see .githooks/),
+  SessionStart -> remember the session id (for the commit trailer, see githooks/),
                   then sync + commit anything earlier sessions left uncommitted
   Stop         -> copy the transcript (cheap; keeps the record current after every turn),
                   and commit the record repo every Nth turn (record_commit_every)
@@ -10,7 +10,7 @@ Run automatically by the hooks in .claude/settings.json:
 
 Run by hand to sweep up every session of this project, worktree sessions included
 (e.g. if a session ended without firing SessionEnd, or when adopting an existing project):
-  python tools/capture_session.py --all [--commit]
+  python intent-kit/tools/capture_session.py --all [--commit]
 
 Each copied session gets a note of whose it is (<date>_<id>.author): the person this
 clone is set up for (`kit.py whoami`). A session is one person's, so the note is written
@@ -33,7 +33,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import record_secrets  # noqa: E402
-from kitlib import (CFG, CURRENT, RECORD, SESSIONS, TURNS, author_file, find_transcript, git,  # noqa: E402
+from kitlib import (CFG, CURRENT, RECORD, SESSIONS, TOOLS_REL, TURNS, author_file, find_transcript, git,  # noqa: E402
                     my_name, record_problem, remember_transcript_dir, suggested_name, transcript_dirs)
 
 
@@ -147,7 +147,7 @@ def main():
     problem = record_problem()
     if "--all" in sys.argv:
         if problem:
-            sys.exit(f"capture_session: FAILED: {problem}; nothing copied. Run python tools/kit.py check.")
+            sys.exit(f"capture_session: FAILED: {problem}; nothing copied. Run python {TOOLS_REL}/kit.py check.")
         n = sync_all()
         print(f"capture_session: synced {n} session(s) into {SESSIONS}")
         if "--commit" in sys.argv:
@@ -170,7 +170,7 @@ def main():
         if problem:
             # A SessionStart hook's stdout is added to the agent's context: say it there.
             print(f"intent-kit WARNING: this session is NOT being recorded: {problem}. "
-                  "Tell the owner and run `python tools/kit.py check`.")
+                  f"Tell the owner and run `python {TOOLS_REL}/kit.py check`.")
             return
         if transcript.is_file():
             remember_transcript_dir(transcript)
@@ -179,7 +179,7 @@ def main():
             print("intent-kit: this clone doesn't know who is working in it, so this session and the intent "
                   "captured from it can't be attributed. Before other work, ask the person \"What shall I call "
                   "you?\"" + (f", suggesting \"{guess}\"" if guess else "") + ", then run `python "
-                  f"{CFG.get('tools_dir', 'tools')}/kit.py whoami --set \"<name>\"`. Use the name they give, "
+                  f"{TOOLS_REL}/kit.py whoami --set \"<name>\"`. Use the name they give, "
                   "not a guess.")
         # SessionEnd doesn't always fire (apps get closed), so commit whatever earlier
         # sessions left behind each time a new one starts. Otherwise no stdout here.
@@ -207,7 +207,7 @@ def main():
         if new:  # a Stop hook's systemMessage is shown to the owner
             print(json.dumps({"systemMessage": (
                 f"intent-kit: {len(new)} possible secret(s) just reached the private record. "
-                "`python tools/record_secrets.py` lists them, masked; ask the agent to scrub or ignore them.")}))
+                f"`python {TOOLS_REL}/record_secrets.py` lists them, masked; ask the agent to scrub or ignore them.")}))
 
 
 if __name__ == "__main__":

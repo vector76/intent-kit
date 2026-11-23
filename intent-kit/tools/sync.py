@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Bring this branch up to date with main.
 
-  python tools/sync.py [--quiet]
+  python intent-kit/tools/sync.py [--quiet]
 
 Run at the start of a session in a worktree, or on any branch other than main. If
 the branch has no commits of its own it fast-forwards to main. Otherwise it follows
-the project's landing policy (intent-kit.json "landing"): "linear" rebases the
+the project's landing policy (intent-kit/config.json "landing"): "linear" rebases the
 branch's commits onto main, "merge" merges main into the branch. Uncommitted changes
 are stashed and restored around it. On a conflict nothing is changed and the
 conflicting files are listed: resolve by hand or ask the owner.

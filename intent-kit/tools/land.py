@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Land a branch on main with plain git, following the project's landing policy.
 
-  python tools/land.py [branch] [--no-push] [--dry-run]
+  python intent-kit/tools/land.py [branch] [--no-push] [--dry-run]
 
 - branch: defaults to the current branch.
-- "landing": "linear" (intent-kit.json) rebases the branch onto main (tools/sync.py),
+- "landing": "linear" (intent-kit/config.json) rebases the branch onto main (intent-kit/tools/sync.py),
   then fast-forwards main to it: no merge commits, and each commit keeps the
   `Session:` trailer of the session that made it. "merge" merges the branch into main
   with a merge commit.
@@ -14,7 +14,7 @@
   nothing uncommitted. On a conflict nothing changes; resolve and land again.
 
 Land when the owner asks. Intent entries and current-view documents are already on
-main (tools/to_main.py); landing carries everything else.
+main (intent-kit/tools/to_main.py); landing carries everything else.
 
 Managed by intent-kit.
 """
@@ -24,7 +24,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from kitlib import CFG, MAIN, REPO, TARGET, checkout_of, current_branch, git, with_trailer  # noqa: E402
+from kitlib import CFG, MAIN, REPO, TARGET, TOOLS_REL, checkout_of, current_branch, git, with_trailer  # noqa: E402
 from sync import sync  # noqa: E402
 
 TOOL = "land"
@@ -109,7 +109,7 @@ def main():
             if r.returncode != 0:
                 files = "\n  ".join(r.stdout.strip().splitlines()[1:])
                 fail(f"{branch} conflicts with {TARGET} in:\n  {files}\nNothing was changed. "
-                     "Sync the branch (tools/sync.py), resolve, and land again.")
+                     f"Sync the branch ({TOOLS_REL}/sync.py), resolve, and land again.")
             new = g("commit-tree", r.stdout.split()[0], "-p", old, "-p", branch, "-F", "-",
                     input=msg, env=dict(os.environ)).stdout.strip()
             g("update-ref", "-m", f"{TOOL}: merge {branch}", f"refs/heads/{TARGET}", new, old)

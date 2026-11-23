@@ -1,7 +1,7 @@
 # Decisions
 
 One file per decision: `D-0001-short-name.md`, created with
-`python tools/to_main.py decision --slug short-name --file draft.md` (the draft uses
+`python intent-kit/tools/to_main.py decision --slug short-name --file draft.md` (the draft uses
 `{ID}` for the number). A decision is replaced by a new one (`replaces: D-0003`) rather
 than edited into something else. Template:
 

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Commit the record of intent and the plan straight to main, from any branch or worktree.
 
-  python tools/to_main.py docs -m "what changed"
-  python tools/to_main.py decision   --slug short-name --file draft.md [-m "subject"]
-  python tools/to_main.py lesson     --slug short-name --file draft.md [-m "subject"]
-  python tools/to_main.py intent     --slug short-name --file draft.md [-m "subject"]
-  python tools/to_main.py research | concept | experiment ...   (when those layers are on)
+  python intent-kit/tools/to_main.py docs -m "what changed"
+  python intent-kit/tools/to_main.py decision   --slug short-name --file draft.md [-m "subject"]
+  python intent-kit/tools/to_main.py lesson     --slug short-name --file draft.md [-m "subject"]
+  python intent-kit/tools/to_main.py intent     --slug short-name --file draft.md [-m "subject"]
+  python intent-kit/tools/to_main.py research | concept | experiment ...   (when those layers are on)
 
 Numbered entries: the draft is written anywhere outside tracked files (out/ is
 ignored) with `{ID}` wherever the entry's ID goes. Under a lock shared by every
@@ -13,11 +13,11 @@ worktree, this takes the next free number from main, writes the entry and commit
 only that file to main, with this session's `Session:` trailer. If main is checked
 out somewhere (usually the main checkout), the entry is written and committed there;
 if not, it is committed to the main branch directly. This branch doesn't get the
-entry until it next syncs (tools/sync.py), and doesn't need it: numbers come from main.
-With "sync_after_to_main" on in intent-kit.json, this branch is synced at once. An experiment's
+entry until it next syncs (intent-kit/tools/sync.py), and doesn't need it: numbers come from main.
+With "sync_after_to_main" on in intent-kit/config.json, this branch is synced at once. An experiment's
 entry is its folder's README.md; the rest of the experiment is then worked on here.
 
-Intent entries normally go through tools/extract_human_messages.py, which uses this
+Intent entries normally go through intent-kit/tools/extract_human_messages.py, which uses this
 module; `intent` here is only for a hand-written neutral entry (see intent/README.md).
 
 Entries say according to whom. A hand-written intent entry without an `author:` line gets
@@ -25,7 +25,7 @@ the name this clone is set up for (`kit.py whoami`). A decision needs `agreed_by
 agreed to it) and a lesson `found_by:` (who found the problem) in its front matter.
 
 `docs` is for the current-view documents: intent/vision.md, everything under plan/,
-CLAUDE.md and intent-kit.json. Edit them where you are, then run it. On main it just
+CLAUDE.md and intent-kit/config.json. Edit them where you are, then run it. On main it just
 commits them. On another branch it commits them there (and nothing else), then copies
 that commit, and any earlier unlanded commits that touch only these documents, onto
 main. If main's copy changed in a way that conflicts, nothing is copied and the
@@ -43,7 +43,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from kitlib import (CFG, DOCS, MAIN, REPO, TARGET, checkout_of, current_branch, git,  # noqa: E402
+from kitlib import (CFG, CONFIG_NAME, DOCS, MAIN, REPO, TARGET, TOOLS_REL, checkout_of, current_branch, git,  # noqa: E402
                     is_doc, kinds, main_tree_files, my_name, with_trailer, yaml_str)
 from sync import sync  # noqa: E402
 
@@ -155,7 +155,7 @@ def after_main_changed():
         sync(REPO)
     else:
         print(f"{TOOL}: {branch} doesn't have this yet, and doesn't need it to; "
-              f"run tools/sync.py when you want it here")
+              f"run {TOOLS_REL}/sync.py when you want it here")
 
 
 def entry_path(kind: str, eid: str, slug: str) -> str:
@@ -166,7 +166,7 @@ def entry_path(kind: str, eid: str, slug: str) -> str:
 def add_entry(kind: str, slug: str, render, subject: str | None = None) -> str:
     """render(id) -> file text. Commits the new entry to main; returns its repo-relative path."""
     if kind not in kinds():
-        fail(f"unknown kind {kind!r} (layers not enabled in intent-kit.json?)")
+        fail(f"unknown kind {kind!r} (layers not enabled in {CONFIG_NAME}?)")
     if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", slug):
         fail("a slug is lowercase letters, digits and hyphens")
     with MainLock():
@@ -193,7 +193,7 @@ def copy_to_main(commit: str) -> str:
         files = "\n  ".join(r.stdout.strip().splitlines()[1:]) or r.stderr.strip()
         fail(f"{g('log', '-1', '--format=%h %s', commit).stdout.strip()} conflicts with {TARGET} in:\n  "
              f"{files}\nNothing was copied. Two threads probably disagree: tell the owner. "
-             "Then sync (tools/sync.py), resolve, and run again.")
+             f"Then sync ({TOOLS_REL}/sync.py), resolve, and run again.")
     tree = r.stdout.split()[0]
     if tree == g("rev-parse", f"{TARGET}^{{tree}}").stdout.strip():
         return old  # main already has this change
@@ -262,7 +262,7 @@ def with_attribution(kind: str, draft: str) -> str:
         name = my_name()
         if not name:
             fail("an intent entry names its author, and this clone hasn't been told who works in it: ask "
-                 "them what to call them, run tools/kit.py whoami --set \"<name>\", or add author: to the draft")
+                 f"them what to call them, run {TOOLS_REL}/kit.py whoami --set \"<name>\", or add author: to the draft")
         if not fm:
             fail("an intent entry needs front matter (--- ... ---) with its author:")
         return re.sub(r"(?m)^(id:.*)$", lambda m: f"{m.group(1)}\nauthor: {yaml_str(name)}", draft, count=1)
