@@ -2,6 +2,7 @@
 id: I-0005
 date: 2026-11-23
 captured_from: session 6d25e113-df43-4d10-b870-5932ea9ad280
+author: Jamie Kawabata
 message_timestamps: [2026-11-23T06:21:53.031Z]
 supersedes: []
 tags: [intent-log]

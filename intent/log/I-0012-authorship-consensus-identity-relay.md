@@ -2,6 +2,7 @@
 id: I-0012
 date: 2026-11-23
 captured_from: session 6d25e113-df43-4d10-b870-5932ea9ad280
+author: Jamie Kawabata
 message_timestamps: [2026-11-23T17:15:50.784Z]
 supersedes: []
 tags: [authorship]

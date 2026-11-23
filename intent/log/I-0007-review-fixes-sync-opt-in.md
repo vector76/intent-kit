@@ -2,6 +2,7 @@
 id: I-0007
 date: 2026-11-23
 captured_from: session 6d25e113-df43-4d10-b870-5932ea9ad280
+author: Jamie Kawabata
 message_timestamps: [2026-11-23T07:07:06.772Z, 2026-11-23T07:12:21.025Z]
 supersedes: []
 tags: [review, sync, adoption]
