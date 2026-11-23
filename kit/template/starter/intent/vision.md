@@ -23,4 +23,5 @@ The current view of what {{PROJECT}} is. It is a synthesis built from the
 ## Open questions and tensions
 
 *(Contradictions between intent entries, or between a request and this vision, are
-listed here and put to the owner. None yet.)*
+listed here and put to the people whose intent it is. Where people want different
+things, each point says who holds each view. None yet.)*

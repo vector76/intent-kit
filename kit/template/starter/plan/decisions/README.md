@@ -11,6 +11,7 @@ id: {ID}
 date: YYYY-MM-DD
 status: active | replaced-by D-xxxx
 from: [I-xxxx, E-xxxx, N-xxxx, R-xxx]
+agreed_by: [<who agreed to it>]
 ---
 # <decision>
 

@@ -25,6 +25,9 @@ Choices (see ONBOARDING.md for what each means; the agent asks the owner):
   --record-remote URL                        a private git repo for record/: an empty one gets the
                                              record pushed to it; one holding the record is checked out
   --config answers.json                      the same choices as a JSON object
+  --me NAME                                  what to call the person setting it up (asked at onboarding;
+                                             default: Claude Code's account name, else git's user.name).
+                                             Kept in this clone's git config, not committed
 
 upgrade compares the project's kit-managed files (the tools, the commit hook and
 METHOD.md) with this kit and shows what differs; --apply replaces them, adds any
@@ -87,6 +90,20 @@ def find_python() -> str | None:
         if v and v >= MIN_PYTHON:
             return name
     return None
+
+
+def suggested_name() -> str:
+    """Claude Code's name for its signed-in account, else git's user.name; never an email address."""
+    try:
+        acct = json.loads((Path.home() / ".claude.json").read_text(encoding="utf-8")).get("oauthAccount") or {}
+        for key in ("displayName", "fullName"):
+            v = str(acct.get(key) or "").strip()
+            if v and "@" not in v:
+                return v
+    except (OSError, ValueError, AttributeError):
+        pass
+    v = subprocess.run(["git", "config", "--get", "user.name"], capture_output=True, text=True).stdout.strip()
+    return v if "@" not in v else ""
 
 
 def git(*args, cwd, check=False, input=None, env=None):
@@ -318,6 +335,9 @@ def init(a):
     print(f"  record/ as its own git repo{' (exists)' if (root / 'record' / '.git').exists() else ''}"
           + (f", remote {remote}" if remote else ", local only (no remote)"))
     print(f"  hooks run Python as: {cfg['python']}")
+    me = (a.me or "").strip() or suggested_name()
+    print(f"  sessions and intent here recorded as: {me}" + ("" if a.me else " (suggested; --me to change)")
+          if me else "  sessions and intent here recorded as: nobody yet (pass --me NAME)")
     print("  git config core.hooksPath .githooks")
     print("  render METHOD-RULES.md and import it from CLAUDE.md (one @METHOD-RULES.md line)")
     for s_ in suggestions:
@@ -337,6 +357,8 @@ def init(a):
         if rel.startswith(".githooks/"):
             p.chmod(0o755)
     git("config", "core.hooksPath", ".githooks", cwd=root, check=True)
+    if me:
+        git("config", "--local", "intent-kit.name", me, cwd=root, check=True)
     if run_tool(root, cfg, "record", *(["--remote", remote] if remote else [])) != 0:
         print("bootstrap: the record isn't fully set up (see above); fix it, then run "
               f"python {cfg['tools_dir']}/kit.py record" + (f" --remote {remote}" if remote else ""))
@@ -357,6 +379,8 @@ def init(a):
     if is_repo:
         print(f"  - review and commit the scaffold on {cfg['main_branch']} (git status)")
         print(f"  - sweep this project's earlier sessions into the record: python {t}/capture_session.py --all --commit")
+    if not me:
+        print(f"  - ask the owner what to call them, then: python {t}/kit.py whoami --set \"<name>\"")
     print(f"  - cite the owner's onboarding answers in {CONFIG_NAME} (not as intent): "
           f"python {t}/kit.py cite <session-id> --msg <n> --keys <settings>")
     print(f"  - capture the owner's first words about the project as I-0001: "
@@ -443,6 +467,7 @@ def main():
     i.add_argument("--python")
     i.add_argument("--record-remote")
     i.add_argument("--config")
+    i.add_argument("--me")
     i.add_argument("--dry-run", action="store_true")
     u = sub.add_parser("upgrade")
     u.add_argument("dir")

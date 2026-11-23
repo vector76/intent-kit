@@ -11,6 +11,14 @@ human's words; extract them.
   Write an intent entry from one or more messages:
     python tools/extract_human_messages.py <session-id> \
         --slug short-name --msg 4 [5 ...] [--supersedes I-0001] [--tags cost,assembly]
+        [--on-behalf-of NAME]
+
+Every entry names its author: the person whose session it is. A session is one person's,
+so the author comes from the record's note of the session (written by the hooks), or, for
+a transcript on this machine, from the name set up in this clone (`kit.py whoami`). Only
+when neither is known does --author NAME say whose it is. Words are never recorded as
+someone else's: when the speaker relays another person's wishes ("Alice wants X"),
+--on-behalf-of Alice records that claim, and the entry stays the speaker's.
 
 The entry gets the next free I- number on main and is committed straight to main
 (tools/to_main.py), wherever this runs, so two sessions or worktrees capturing at
@@ -29,8 +37,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from kitlib import (CFG, CONFIG_NAME, SESSIONS, find_transcript, main_file_text,  # noqa: E402
-                    main_tree_files)
+from kitlib import (CFG, CONFIG_NAME, SESSIONS, find_transcript, is_local_transcript,  # noqa: E402
+                    main_file_text, main_tree_files, my_name, session_author, yaml_str)
 
 LOG = "intent/log"
 # Text that arrives as a "user" record but isn't the human's: command wrappers and system
@@ -146,9 +154,15 @@ def main():
     ap.add_argument("--msg", type=int, nargs="+", help="message numbers from --list")
     ap.add_argument("--supersedes", default="", help="comma-separated intent ids")
     ap.add_argument("--tags", default="")
+    ap.add_argument("--on-behalf-of", default="", metavar="NAME",
+                    help="the speaker is relaying NAME's wishes; the entry stays the speaker's")
+    ap.add_argument("--author", default="", help="only when the session's author isn't known")
     a = ap.parse_args()
 
-    msgs = human_messages(resolve(a.transcript))
+    path = resolve(a.transcript)
+    msgs = human_messages(path)
+    sid = msgs[0][1] if msgs else path.stem.split("_")[-1]
+    known = session_author(sid) or (my_name() if is_local_transcript(path) else "")
     if a.list or not a.slug:
         done, cited = captured_messages(), cited_messages()
         n_done = n_cited = 0
@@ -162,6 +176,7 @@ def main():
             else:
                 mark = " "
             print(f"{i:3d}{mark} {ts[:19]}  {text[:90].replace(chr(10), ' ')}")
+        print(f"\nSession author: {known or 'unknown (see --author)'}")
         print(f"\n{n_done} of {len(msgs)} message(s) are in an intent entry on main (*)"
               + (f", {n_cited} are cited by {CONFIG_NAME} as setup answers (c)" if n_cited else "")
               + ". Not every message is intent; check each unmarked one.")
@@ -172,6 +187,19 @@ def main():
     if any(n < 1 or n > len(msgs) for n in a.msg):
         sys.exit(f"--msg numbers run from 1 to {len(msgs)}; see --list")
     chosen = [msgs[n - 1] for n in a.msg]
+    author = a.author.strip()
+    if author and known and author != known:
+        sys.exit(f"this session is {known}'s; its words can't be recorded as {author}'s. If {known} is "
+                 f"passing on {author}'s wishes, use --on-behalf-of {author!r}")
+    author = author or known
+    if not author:
+        sys.exit("whose session is this? Nothing records it" + (
+            ": this clone hasn't been told who works in it. Ask them what to call them, then run "
+            "python tools/kit.py whoami --set \"<name>\"" if is_local_transcript(path) else
+            ". Ask the person whose session it was, then pass --author \"<name>\""))
+    behalf = a.on_behalf_of.strip()
+    if behalf == author:
+        behalf = ""
 
     def lst(s):
         return "[" + ", ".join(x.strip() for x in s.split(",") if x.strip()) + "]"
@@ -182,6 +210,8 @@ def main():
             f"id: {eid}",
             f"date: {chosen[0][0][:10]}",
             f"captured_from: session {chosen[0][1]}",
+            f"author: {yaml_str(author)}",
+            *([f"on_behalf_of: {yaml_str(behalf)}"] if behalf else []),
             f"message_timestamps: [{', '.join(ts for ts, _, _ in chosen)}]",
             f"supersedes: {lst(a.supersedes)}",
             f"tags: {lst(a.tags)}",

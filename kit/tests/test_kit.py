@@ -29,7 +29,7 @@ class Env:
         self.home = self.tmp / "home"
         self.home.mkdir()
         gc = self.tmp / "gitconfig"
-        gc.write_text("[init]\n\tdefaultBranch = main\n", encoding="utf-8")
+        gc.write_text("[init]\n\tdefaultBranch = main\n[user]\n\tname = Test Person\n", encoding="utf-8")
         self.env = {k: v for k, v in os.environ.items() if not k.startswith(("CLAUDE", "GIT_"))}
         self.env.update({
             "HOME": str(self.home), "USERPROFILE": str(self.home), "GIT_CONFIG_GLOBAL": str(gc),
@@ -222,7 +222,7 @@ class KitTest(unittest.TestCase):
 
         # a decision from a worktree
         draft = self.e.tmp / "d.md"
-        draft.write_text("---\nid: {ID}\n---\n# Use X\n", encoding="utf-8")
+        draft.write_text("---\nid: {ID}\nagreed_by: [Test Person]\n---\n# Use X\n", encoding="utf-8")
         self.e.tool(wa, "to_main.py", "decision", "--slug", "use-x", "--file", draft)
         self.assertIn("plan/decisions/D-0001-use-x.md", self.main_files(root, "plan/decisions"))
 
@@ -479,7 +479,7 @@ class KitTest(unittest.TestCase):
         self.e.tool(root, "capture_session.py", input=hook(SID_A, ta, "SessionEnd"))
         rec = root / "record"
         files = self.e.git(rec, "show", "--name-only", "--format=", "HEAD").stdout.split()
-        self.assertEqual(files, [f"sessions/2026-01-02_{SID_A}.jsonl"])
+        self.assertEqual(files, [f"sessions/2026-01-02_{SID_A}.author", f"sessions/2026-01-02_{SID_A}.jsonl"])
         self.assertIn(SID_B, self.e.git(rec, "status", "--porcelain").stdout)  # left for b's own commit
         # another commit holding the lock: wait for it rather than drop this one
         lock = rec / ".git" / "index.lock"
@@ -492,7 +492,7 @@ class KitTest(unittest.TestCase):
         lock.unlink()
         p.communicate(hook(SID_B, tb, "SessionEnd"), timeout=60)
         self.assertEqual(self.e.git(rec, "show", "--name-only", "--format=", "HEAD").stdout.split(),
-                         [f"sessions/2026-01-02_{SID_B}.jsonl"])
+                         [f"sessions/2026-01-02_{SID_B}.author", f"sessions/2026-01-02_{SID_B}.jsonl"])
 
     def test_secrets_are_flagged_and_scrubbed(self):
         aws = "AKIA" + "QX7Z" * 4            # built here so no key-shaped text sits in this file
@@ -530,6 +530,101 @@ class KitTest(unittest.TestCase):
         self.assertNotIn(aws, copied)
         self.assertIn("[REDACTED:", copied)
         self.e.tool(root, "kit.py", "check")
+
+    def test_authorship(self):
+        root = self.new_project()
+        self.assertIn("Test Person", self.e.tool(root, "kit.py", "whoami").stdout)  # from git's user.name
+        rec = root / "record" / "sessions"
+        t = self.e.transcript(root, SID_A, [user("Make it blue.", "2026-01-02T00:00:01Z"),
+                                            user("Alice wants it round.", "2026-01-02T00:00:02Z")])
+        hook = lambda ev, sid, tp: json.dumps({"hook_event_name": ev, "session_id": sid, "transcript_path": str(tp)})
+        r = self.e.tool(root, "capture_session.py", input=hook("SessionStart", SID_A, t))
+        self.assertEqual(r.stdout.strip(), "")
+        self.assertEqual((rec / f"2026-01-02_{SID_A}.author").read_text().strip(), "Test Person")
+        self.assertIn(f"2026-01-02_{SID_A}.author", self.e.git(root / "record", "ls-files").stdout)
+
+        self.e.tool(root, "extract_human_messages.py", SID_A, "--slug", "blue", "--msg", "1")
+        blue = (root / "intent/log/I-0001-blue.md").read_text(encoding="utf-8")
+        self.assertIn("\nauthor: Test Person\n", blue)
+        self.assertNotIn("on_behalf_of", blue)
+        self.e.tool(root, "extract_human_messages.py", SID_A, "--slug", "round", "--msg", "2",
+                    "--on-behalf-of", "Alice")
+        rnd = (root / "intent/log/I-0002-round.md").read_text(encoding="utf-8")
+        self.assertIn("\nauthor: Test Person\non_behalf_of: Alice\n", rnd)
+        # words are never recorded as someone else's
+        r = self.e.tool(root, "extract_human_messages.py", SID_A, "--slug", "x", "--msg", "2",
+                        "--author", "Alice", ok=False)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("--on-behalf-of", r.stderr)
+        self.assertIn("Session author: Test Person", self.e.tool(root, "extract_human_messages.py", SID_A,
+                                                                 "--list").stdout)
+
+        # a clone that doesn't know who works in it asks, suggesting Claude Code's account name
+        self.e.git(root, "config", "--unset", "intent-kit.name")
+        (self.e.home / ".claude.json").write_text(json.dumps({"oauthAccount": {
+            "displayName": "Dana", "emailAddress": "dana@example.invalid"}}), encoding="utf-8")
+        tb = self.e.transcript(root, SID_B, [user("Make it fast.", "2026-01-03T00:00:01Z")])
+        r = self.e.tool(root, "capture_session.py", input=hook("SessionStart", SID_B, tb))
+        self.assertIn("What shall I call you?", r.stdout)
+        self.assertIn('"Dana"', r.stdout)
+        self.assertNotIn("example.invalid", r.stdout)
+        self.assertFalse((rec / f"2026-01-03_{SID_B}.author").exists())
+        self.assertIn("doesn't know who works in it", self.e.tool(root, "kit.py", "check").stdout)
+        r = self.e.tool(root, "extract_human_messages.py", SID_B, "--slug", "fast", "--msg", "1", ok=False)
+        self.assertIn("whoami --set", r.stderr)
+        self.e.tool(root, "kit.py", "whoami", "--set", "Dana Q")
+        self.e.tool(root, "capture_session.py", input=hook("Stop", SID_B, tb))
+        self.assertEqual((rec / f"2026-01-03_{SID_B}.author").read_text().strip(), "Dana Q")
+        # the session's own note wins over the clone's name, which is now someone else's
+        self.assertEqual((rec / f"2026-01-02_{SID_A}.author").read_text().strip(), "Test Person")
+        self.e.tool(root, "extract_human_messages.py", SID_B, "--slug", "fast", "--msg", "1")
+        self.assertIn("\nauthor: Dana Q\n", (root / "intent/log/I-0003-fast.md").read_text(encoding="utf-8"))
+
+        # a transcript known only from the record, with no note: whose it is must be given
+        sid_c = "cccccccc-1111-2222-3333-444444444444"
+        (rec / f"2026-01-04_{sid_c}.jsonl").write_text(json.dumps(
+            {"sessionId": sid_c, **user("Make it cheap.", "2026-01-04T00:00:01Z")}) + "\n", encoding="utf-8")
+        r = self.e.tool(root, "extract_human_messages.py", sid_c, "--slug", "cheap", "--msg", "1", ok=False)
+        self.assertIn("--author", r.stderr)
+        self.e.tool(root, "extract_human_messages.py", sid_c, "--slug", "cheap", "--msg", "1", "--author", "Erin")
+        self.assertIn("\nauthor: Erin\n", (root / "intent/log/I-0004-cheap.md").read_text(encoding="utf-8"))
+
+        # decisions say who agreed, lessons who found the problem; a hand-written intent entry gets its author
+        draft = self.e.tmp / "d.md"
+        draft.write_text("---\nid: {ID}\n---\n# Use X\n", encoding="utf-8")
+        for kind, key in (("decision", "agreed_by"), ("lesson", "found_by")):
+            r = self.e.tool(root, "to_main.py", kind, "--slug", "x", "--file", draft, ok=False)
+            self.assertIn(key, r.stderr + r.stdout)
+        self.assertEqual(self.main_files(root, "plan/decisions"), ["plan/decisions/README.md"])
+        self.e.tool(root, "to_main.py", "intent", "--slug", "pointer", "--file", draft)
+        self.assertIn("id: I-0005\nauthor: Dana Q\n", (root / "intent/log/I-0005-pointer.md").read_text(encoding="utf-8"))
+
+        # entries from before authorship: attributed only on request, words unchanged
+        old = root / "intent/log/I-0006-old.md"
+        old.write_text("---\nid: I-0006\ndate: 2025-01-01\ncaptured_from: session x\ntags: []\n---\n\n"
+                       "Old words.\n", encoding="utf-8")
+        self.e.git(root, "add", old)
+        self.e.git(root, "commit", "-q", "-m", "old entry")
+        self.assertIn("1 intent entry names no author", self.e.tool(root, "kit.py", "check").stdout)
+        self.assertIn("I-0006-old.md", self.e.tool(root, "kit.py", "attribute", "Dana Q").stdout)
+        self.assertNotIn("author:", old.read_text(encoding="utf-8"))  # dry run by default
+        self.e.tool(root, "kit.py", "attribute", "Dana Q", "--apply", sid=SID_B)
+        self.assertEqual(old.read_text(encoding="utf-8"),
+                         "---\nid: I-0006\ndate: 2025-01-01\ncaptured_from: session x\nauthor: Dana Q\n"
+                         "tags: []\n---\n\nOld words.\n")
+        self.assertIn(f"Session: {SID_B}", self.e.git(root, "log", "-1", "--format=%B").stdout)
+        self.assertNotIn("names no author", self.e.tool(root, "kit.py", "check").stdout)
+        rules = (root / "METHOD-RULES.md").read_text(encoding="utf-8")
+        self.assertIn("Every entry says according to whom", rules)
+        self.assertIn("never decide between people", rules)
+
+    def test_bootstrap_asks_what_to_call_the_owner(self):
+        r = self.e.py(BOOTSTRAP, "init", self.e.tmp / "p", "--name", "P", "--dry-run")
+        self.assertIn("recorded as: Test Person (suggested; --me to change)", r.stdout)
+        root = self.e.tmp / "q"
+        self.e.py(BOOTSTRAP, "init", root, "--name", "Q", "--me", "Pat Doe")
+        self.assertEqual(self.e.git(root, "config", "--get", "intent-kit.name").stdout.strip(), "Pat Doe")
+        self.assertNotIn("intent-kit.name", self.e.git(root, "show", "HEAD", "--stat").stdout)
 
 
 if __name__ == "__main__":

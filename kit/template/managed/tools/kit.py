@@ -10,6 +10,11 @@
                                 set record/ up as its own git repo (on a fresh clone too), and
                                 connect it to a private remote: an empty one gets the record
                                 pushed to it, one that already holds the record is checked out
+  python tools/kit.py whoami [--set NAME]
+                                show (or set) the name this clone records sessions and intent under
+  python tools/kit.py attribute NAME [--apply]
+                                name NAME as the author of every intent entry on main that names
+                                none; only when NAME says those words are all theirs
 
 METHOD-RULES.md is generated: to change how the project is run, change intent-kit.json
 (citing what asked for it under "sources"), re-render, and publish both with
@@ -30,8 +35,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from kitlib import (CONFIG_NAME, DEFAULTS, MAIN, MIN_PYTHON, RECORD, REPO, TARGET, git,  # noqa: E402
-                    kinds, load_config, main_tree_files, python_version, record_problem)
+from kitlib import (CONFIG_NAME, DEFAULTS, MAIN, MIN_PYTHON, RECORD, REPO, TARGET, checkout_of, git,  # noqa: E402
+                    kinds, load_config, main_file_text, main_tree_files, my_name, python_version,
+                    record_problem, set_my_name, suggested_name, with_trailer, yaml_str)
 
 RULES_NAME = "METHOD-RULES.md"
 IMPORT = "@" + RULES_NAME
@@ -53,7 +59,8 @@ def render_rules(cfg: dict) -> str:
     stances = cfg.get("stances", [])
     k = kinds(cfg)
     rows = [
-        ("Intent (the owner's words, verbatim)", "`intent/log/`", "I-0001", "append-only, never edit"),
+        ("Intent (people's own words, verbatim, each naming its author)", "`intent/log/`", "I-0001",
+         "append-only, never edit"),
         ("Vision (current view)", "`intent/vision.md`", "—", "rewritten to stay current"),
         ("Requirements", "`plan/requirements.md`", "R-001", "current view only"),
         ("Decisions", "`plan/decisions/`", "D-0001", "a decision can be replaced by a new one"),
@@ -80,11 +87,11 @@ def render_rules(cfg: dict) -> str:
     cite += ", and experiments cite the question they answer." if "experiments" in layers else "."
 
     rules = [
-        "**Intent is the owner's words, verbatim and append-only.** Never edit or paraphrase "
+        "**Intent is people's own words, verbatim and append-only.** Never edit or paraphrase "
         f"`intent/log/`. Capture new intent with `{py} {t}/extract_human_messages.py <session-id> "
         "--slug <name> --msg <n> [...]` (see `intent/README.md`); it commits the entry to main at once. "
         "Intent about how the project is run and recorded is intent too, and goes in the same log. "
-        "When the owner states, refines or changes intent, capture it before the session ends, then "
+        "When someone states, refines or changes intent, capture it before the session ends, then "
         "update `intent/vision.md` (and `plan/requirements.md` if affected). **Before ending a session, "
         "run `--list` again: every message not marked `*` that states, refines or changes intent needs "
         "an entry.** Count; don't trust the filter.",
@@ -92,9 +99,19 @@ def render_rules(cfg: dict) -> str:
         "only what is true now: no \"superseded\" or \"previously\" sections, no changelogs, no "
         "strike-throughs. Git is the history. Keep a short reason only where a point would otherwise "
         "look wrong (\"because E-0004 showed ...\").",
+        "**Every entry says according to whom.** An intent entry's `author:` is the person who typed "
+        "the words. A session is one person's (it can't be shared or handed over), and the extractor "
+        "takes the author from it. Never record words as anyone else's. When someone relays another "
+        "person's wishes (\"Alice wants X\"), capture it with `--on-behalf-of Alice`: it stays the "
+        "speaker's entry, and it counts as the speaker's view of what that person wants, not as their "
+        "intent, until they say it themselves. Agreeing is a new entry by the person who agrees. A "
+        "decision says who agreed to it (`agreed_by:`), and a lesson who found the problem (`found_by:`). "
+        "This isn't proof of identity; it's so people know whom to talk to.",
         "**Surface contradictions; don't resolve them silently.** If intent entries conflict, or a "
         "request conflicts with the vision, list it under *Open questions and tensions* in "
-        "`intent/vision.md` and ask. Don't pick a side on your own.",
+        "`intent/vision.md` and ask. Don't pick a side on your own. The vision and requirements are "
+        "written as the consensus and name no one. Where people's intent differs, the open question "
+        "names who holds each view, so they can talk it through; never decide between people.",
     ]
     if "wide-search" in stances:
         rules.append(
@@ -181,6 +198,9 @@ def render_rules(cfg: dict) -> str:
         f"hand with `{py} {t}/capture_session.py --all --commit`. Commits here get a `Session: <id>` "
         "trailer from `.githooks/prepare-commit-msg` (enabled by `git config core.hooksPath .githooks`), "
         "linking each commit to the session that made it; don't remove it. "
+        "If the session start says this clone doesn't know who is working in it, ask the person what to "
+        f"call them before other work, suggest the name it offers, and run `{py} {t}/kit.py whoami --set "
+        "\"<name>\"` with the name they give. "
         f"`{py} {t}/kit.py check` verifies the whole setup. If the session start says the session is NOT "
         "being recorded, tell the owner. On a fresh clone the fix is usually `git config core.hooksPath "
         f".githooks` and `{py} {t}/kit.py record --remote <the record's private url>`."
@@ -420,6 +440,82 @@ def setup_record(remote: str | None = None) -> int:
     return 0
 
 
+def whoami(name: str | None) -> int:
+    if name is not None:
+        if not name.strip() or "\n" in name:
+            sys.exit("kit: a name is one line of text")
+        set_my_name(name)
+        print(f"kit: sessions and intent in this clone are now recorded as {name.strip()}'s "
+              "(kept in its git config; not committed)")
+        return 0
+    have = my_name()
+    if have:
+        print(f"kit: this clone records sessions and intent as {have}'s")
+        return 0
+    guess = suggested_name()
+    print("kit: this clone doesn't know who works in it. Ask them what to call them"
+          + (f" (suggest {guess!r})" if guess else "") + ', then: python tools/kit.py whoami --set "<name>"')
+    return 1
+
+
+LOG = "intent/log"
+
+
+def unattributed_entries() -> list[str]:
+    """Intent entries on main whose front matter names no author."""
+    out = []
+    for rel in main_tree_files(LOG):
+        if not rel.endswith(".md"):
+            continue
+        m = re.match(r"---\n(.*?)\n---\n", main_file_text(rel), re.S)
+        if m and not re.search(r"(?m)^author:\s*\S", m.group(1)):
+            out.append(rel)
+    return out
+
+
+def attribute(name: str, apply: bool) -> int:
+    """Add `author: NAME` to the front matter of every intent entry on main that names no author.
+    It changes no one's words, but it does touch the append-only log, so it's for one case: the
+    entries predate authorship and NAME says they're all theirs."""
+    name = name.strip()
+    if not name or "\n" in name:
+        sys.exit("kit: a name is one line of text")
+    todo = unattributed_entries()
+    if not todo:
+        print("kit: every intent entry on main names its author")
+        return 0
+    wt = checkout_of(TARGET)
+    print(f"kit: {len(todo)} intent entr{'y' if len(todo) == 1 else 'ies'} on {TARGET} name no author:")
+    for rel in todo:
+        print(f"  {rel}")
+    if not apply:
+        print(f"kit: run again with --apply to name {name} as the author of all of them. Do that only if "
+              f"{name} says those words are all theirs.")
+        return 0
+    if not wt:
+        sys.exit(f"kit: FAILED: check {TARGET} out somewhere first; nothing was changed")
+    dirty = git("status", "--porcelain", "--", *todo, cwd=wt).stdout.strip()
+    if dirty:
+        sys.exit(f"kit: FAILED: {wt} has uncommitted changes to these entries; nothing was changed")
+    line = f"author: {yaml_str(name)}"
+    for rel in todo:
+        path = wt / rel
+        text = path.read_text(encoding="utf-8")
+        head, rest = text.split("\n---\n", 1)
+        lines = head.split("\n")
+        at = next((i for i, ln in enumerate(lines) if ln.startswith("captured_from:")),
+                  next((i for i, ln in enumerate(lines) if ln.startswith("id:")), 0))
+        lines.insert(at + 1, line)
+        path.write_text("\n".join(lines) + "\n---\n" + rest, encoding="utf-8", newline="\n")
+    git("add", "--", *todo, cwd=wt, check=True)
+    msg = with_trailer(f"Attribute {len(todo)} earlier intent entries to {name}\n\n"
+                       "Only the author: line was added; the words are unchanged.")
+    git("commit", "-q", "-F", "-", "--", *todo, cwd=wt, input=msg, check=True)
+    print(f"kit: named {name} as the author of {len(todo)} entr{'y' if len(todo) == 1 else 'ies'}, "
+          f"committed on {TARGET}")
+    return 0
+
+
 def check(root: Path = REPO) -> list[str]:
     problems, notes = [], []
     cfg_path = root / CONFIG_NAME
@@ -502,6 +598,14 @@ def check(root: Path = REPO) -> list[str]:
             notes.append("no intent entries on main yet: capture the owner's first words about the project")
     else:
         notes.append(f"no {TARGET} branch yet: make a first commit")
+    if not my_name():
+        notes.append(f"this clone doesn't know who works in it, so sessions and intent can't be attributed "
+                     f"(python {t}/kit.py whoami)")
+    if git("rev-parse", "--verify", "-q", TARGET, cwd=MAIN).returncode == 0:
+        n_anon = len(unattributed_entries())
+        if n_anon:
+            notes.append(f"{n_anon} intent entr{'y names' if n_anon == 1 else 'ies name'} no author. If one person "
+                         f"said them all and agrees, python {t}/kit.py attribute \"<name>\" names them")
     if not cfg.get("sources"):
         notes.append(f"{CONFIG_NAME} has no \"sources\": cite the owner's messages that set its choices "
                      f"(python {t}/kit.py cite ...)")
@@ -531,6 +635,16 @@ def main():
         ap = argparse.ArgumentParser(prog="kit.py record")
         ap.add_argument("--remote", help="URL of a private git repository for the record")
         sys.exit(setup_record(ap.parse_args(sys.argv[2:]).remote))
+    elif cmd == "whoami":
+        ap = argparse.ArgumentParser(prog="kit.py whoami")
+        ap.add_argument("--set", dest="name", metavar="NAME", help="what to call the person working in this clone")
+        sys.exit(whoami(ap.parse_args(sys.argv[2:]).name))
+    elif cmd == "attribute":
+        ap = argparse.ArgumentParser(prog="kit.py attribute")
+        ap.add_argument("name")
+        ap.add_argument("--apply", action="store_true")
+        a = ap.parse_args(sys.argv[2:])
+        sys.exit(attribute(a.name, a.apply))
     elif cmd == "check":
         problems = check()
         for p in problems:

@@ -189,6 +189,65 @@ def record_problem(need_repo: bool = True) -> str | None:
     return None
 
 
+# --- who is working here --------------------------------------------------------------
+# Each person names themself once per clone; it's kept in the clone's own git config
+# (shared by its worktrees, never committed). A session is one person's: it can't be
+# shared or handed over, so the person set up where it runs is its author.
+
+NAME_KEY = "intent-kit.name"
+
+
+def my_name() -> str:
+    """The name of the person working in this clone, or "" if they haven't been asked yet."""
+    return git("config", "--get", NAME_KEY, cwd=MAIN).stdout.strip()
+
+
+def set_my_name(name: str):
+    git("config", "--local", NAME_KEY, name.strip(), cwd=MAIN, check=True)
+
+
+def suggested_name() -> str:
+    """A default for "what shall I call you?": Claude Code's name for its signed-in account,
+    else git's user.name. Never an email address."""
+    try:
+        acct = json.loads((Path.home() / ".claude.json").read_text(encoding="utf-8")).get("oauthAccount") or {}
+        for key in ("displayName", "fullName"):
+            v = str(acct.get(key) or "").strip()
+            if v and "@" not in v:
+                return v
+    except (OSError, ValueError, AttributeError):
+        pass
+    v = git("config", "--get", "user.name", cwd=MAIN).stdout.strip()
+    return v if "@" not in v else ""
+
+
+def author_file(transcript_copy: Path) -> Path:
+    """The record's note of whose session a copied transcript is: <date>_<id>.author."""
+    return transcript_copy.with_suffix(".author")
+
+
+def session_author(sid: str) -> str:
+    """Whose session this was, as the record noted it when the session was copied ("" if unknown)."""
+    for p in SESSIONS.glob(f"*{sid}.author"):
+        return p.read_text(encoding="utf-8").strip()
+    return ""
+
+
+def is_local_transcript(path: Path) -> bool:
+    """True for a transcript in this machine's Claude folders (so the person set up here wrote it),
+    False for one known only from the record (it may be anyone's)."""
+    try:
+        Path(path).resolve().relative_to(projects_root().resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def yaml_str(s: str) -> str:
+    """A front-matter value: bare when safe, else quoted."""
+    return s if re.fullmatch(r"[A-Za-z0-9][\w .'()-]*", s) and not s.endswith(" ") else json.dumps(s)
+
+
 MIN_PYTHON = (3, 10)
 
 

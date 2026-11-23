@@ -4,7 +4,8 @@ Current projection of the [vision](../intent/vision.md) into checkable statement
 Current view only: no history sections. Each item cites its source. Numbers come from
 the owner's words where they gave one; where the vision is vaguer, the requirement says
 so instead of inventing a number. IDs are stable: a requirement keeps its number when
-others are added or removed.
+others are added or removed. Requirements are written as the consensus and name no one;
+where people's intent differs, the vision's open questions say who holds each view.
 
 **Firmness:**
 - **hard:** the project fails if it doesn't meet this.

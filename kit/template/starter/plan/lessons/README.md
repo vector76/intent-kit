@@ -10,6 +10,7 @@ id: {ID}
 date: YYYY-MM-DD
 sessions: [<session id where it happened>, <session id where it was found>]
 commits: [<sha>]
+found_by: [<who found the problem: a person, or "agent" in a named session>]
 tags: [process, ...]
 ---
 # <what went wrong, in one line>

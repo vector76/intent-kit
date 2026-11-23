@@ -42,6 +42,7 @@ Where there's a default, say what it is.
 
 | Choice | Options | What it changes |
 |---|---|---|
+| What to call the owner | free text; suggest the name the dry run shows | Whose sessions and intent these are. Kept in this clone's git config, not in the project (`--me`) |
 | Name and a one-line summary | free text | README, CLAUDE.md, vision heading |
 | Visibility | **confidential** (default) or publishable | Privacy rule: confidential means no public remote and generic web queries; publishable means keeping personal details and home-directory paths out of the repo |
 | Layers | any of research (N-), concepts (C-), experiments (E-) | Folders, numbered kinds, and the rules that go with them |
@@ -78,6 +79,12 @@ that in a way that works on every host.
 
 Given a URL, the bootstrap checks it can reach it before writing anything.
 
+**What to call the owner.** Ask "What shall I call you?" and offer the suggestion: the
+dry run shows it as "recorded as". It's Claude Code's name for the signed-in account,
+else git's `user.name`, never an email address. Most owners just accept it. Everything
+they say in this clone's sessions is attributed to that name. It isn't proof of identity;
+it's there so that, when intent from several people conflicts, they know whom to talk to.
+
 Some things are fixed, not choices; say so if they come up:
 - **The record is always a separate private git repo** (`record/`, ignored by the
   project), whether it stays local or has a remote.
@@ -90,7 +97,7 @@ Some things are fixed, not choices; say so if they come up:
 python <kit>/bootstrap.py init <project> --name "..." --summary "..." \
     [--visibility publishable] [--layers research,experiments] [--stances wide-search] \
     [--landing merge] [--no-push] [--sync-after-to-main] [--agents any] [--backplane] [--tools-dir tools/kit] \
-    [--python python3] [--record-remote <private url>] --dry-run
+    [--python python3] [--record-remote <private url>] [--me "<what to call the owner>"] --dry-run
 ```
 
 Show the owner the list of what will be added and merged. It includes the Python
@@ -146,7 +153,12 @@ Then:
   listed with the extractor (`--list` takes a session id or a path to a `.jsonl`). Offer
   the owner a backfill: list the earlier sessions' messages and let the owner pick which
   ones become entries. Don't capture old messages without the owner choosing them. Old
-  intent may well be superseded.
+  intent may well be superseded. Sessions swept in from this machine are attributed to
+  the owner. If some earlier sessions were someone else's, capture from them with
+  `--author "<their name>"`, and only after that person confirms they were theirs.
+- **Intent entries from before authorship** (an older kit, or the earlier machinery) name
+  no author. If the owner says they're all theirs, `python tools/kit.py attribute
+  "<name>" --apply` adds an `author:` line to each. It changes no one's words.
 - **Existing documents** (specs, READMEs, issue trackers) aren't intent: they're
   someone's projection of it. The vision can cite them as context. If the owner says "yes,
   that's still what I want", that statement is the intent entry.
@@ -177,6 +189,12 @@ Then:
     it over (any way the owner likes, such as a drive) keeps it whole.
 
   Then run `tools/kit.py check`.
+- **Another person working on the project**, in their own clone. Their first session
+  there says the clone doesn't know who works in it. The agent asks what to call them,
+  suggesting Claude Code's account name, and runs `python tools/kit.py whoami --set
+  "<name>"`. From then on, their sessions and the intent captured from them are theirs.
+  If the record is shared through a remote, each session's note of whose it is
+  (`record/sessions/<date>_<id>.author`) goes with it.
 - **Secrets in the record.** Transcripts keep whatever passed through a session. The
   hooks scan new text for likely secrets (known key formats, private keys, passwords in
   URLs, secret-looking assigned values).
