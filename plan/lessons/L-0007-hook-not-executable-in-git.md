@@ -8,7 +8,7 @@ tags: [hooks, cross-platform, bootstrap]
 # The commit hook was committed without its executable bit, so other systems would skip it
 
 **What happened:** Every kit version up to 0.4.1 committed `.githooks/prepare-commit-msg`
-as mode `100644`: in the kit, in every project it bootstrapped, and in Computronium. The
+as mode `100644`: in the kit, in every project it bootstrapped, and in a project on the earlier machinery. The
 bootstrap did make the file executable on disk. But on Windows git doesn't record the
 executable bit (`core.fileMode` is false), so git's copy wasn't executable. On macOS or
 Linux, git skips a hook without the bit, so commits there would get no `Session:` trailer.

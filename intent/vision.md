@@ -118,8 +118,9 @@ which starts its own record empty. [I-0006]
 - **The projections read as consensus.** Requirements don't cite authors, because the
   projections of intent are treated as what people agree on. Where there's no consensus,
   the vision identifies the authors and their different views. [I-0012]
-- **Existing intent entries are attributed to Jamie Kawabata.** [I-0012] Computronium
-  doesn't need updating and stays on the older, unattributed style. [I-0013]
+- **Existing intent entries are attributed to Jamie Kawabata.** [I-0012] A project on
+  the earlier machinery doesn't need updating and can stay on the older, unattributed
+  style. [I-0013]
 - **Two people with the same name are ignored for now.** [I-0013]
 
 ## Answers to the agent's questions
@@ -142,8 +143,9 @@ which starts its own record empty. [I-0006]
   visibility (confidential), landing (linear) and the rest. Whether the kit may ever be
   published is open, as is its name: "intent-kit" is a placeholder. The owner wants to
   ship it (I-0015) and has pushed it to a private remote (I-0016). Whether it will be
-  made public hasn't been said. If it is, its history names Computronium in three places
-  (I-0013, L-0007 and this vision), though nothing about what Computronium is.
+  made public hasn't been said. If it is, the repository's history names another project,
+  though nothing about it. That project's name is kept out of the current version
+  (I-0017).
 - **Moving the existing projects onto the kit.** Projects already using the earlier
   version of the machinery could be upgraded to it, or left as they are. The owner has
   asked what migrating would gain (I-0008) and hasn't decided.
