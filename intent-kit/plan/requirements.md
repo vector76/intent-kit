@@ -27,7 +27,13 @@ others are added or removed.
 
 - **R-012 (hard).** What ships contains no record of developing the kit: a new project's
   intent log, decisions and lessons start empty. [I-0006]
-- **R-038 (target).** The kit ships as version 1.0.0. [I-0015]
+- **R-038 (target).** The kit ships as version 1.0.0, with the one-folder layout.
+  [I-0015, I-0019]
+- **R-039 (hard).** Everything the kit adds to a project goes in one folder, the
+  project's intent and plan included. The only exception outside it is the link from
+  `CLAUDE.md`, plus what Claude Code requires elsewhere. [I-0018, I-0019]
+- **R-040 (target).** The folder's name is configurable and defaults to `intent-kit`.
+  [I-0019]
 - **R-013 (target).** The working rules reach a project as a file its `CLAUDE.md`
   imports, not as text written into `CLAUDE.md`. [I-0006]
 

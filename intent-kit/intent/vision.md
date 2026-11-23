@@ -47,6 +47,12 @@ which starts its own record empty. [I-0006]
 - **Rules linked into `CLAUDE.md`**, not dropped into it. The working rules are a
   generated file the project's `CLAUDE.md` imports, so `CLAUDE.md` stays the project's
   own. [I-0006]
+- **One folder for everything else**, `intent-kit/` unless the project names it
+  differently. The kit's documents, the project's own intent and plan, the tools and the
+  record all go in it, so they don't clutter the project's root, collide with folders of
+  the same name, or mix with other stacks' documents. Only the link from `CLAUDE.md`
+  stays outside. [I-0018, I-0019] The `.claude/settings.json` hooks stay outside too,
+  because Claude Code only reads them there.
 - **An onboarding phase.** When a project is first brought in, the owner answers a set of
   configuration questions, and the answers are recorded so the repository respects them.
   [I-0003] The answers are cited from the configuration, not entered as the project's
@@ -137,7 +143,7 @@ which starts its own record empty. [I-0006]
 - **Which configuration options onboarding should offer.** The owner named the record's
   location as one, then made it fixed (I-0004), and didn't know the others offhand
   (I-0003). The current set (visibility, layers, stances, landing policy, push on landing,
-  agents, Backplane, tools folder) was proposed by the agent and accepted in passing
+  agents, Backplane, kit folder) was proposed by the agent and accepted in passing
   ("everything else I think makes sense", I-0004). It hasn't been confirmed item by item.
 - **The kit's own settings are the kit's defaults, not the owner's choices.** That covers
   visibility (confidential), landing (linear) and the rest. Whether the kit may ever be
