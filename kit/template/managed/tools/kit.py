@@ -92,7 +92,12 @@ def render_rules(cfg: dict) -> str:
         "--slug <name> --msg <n> [...]` (see `intent/README.md`); it commits the entry to main at once. "
         "Intent about how the project is run and recorded is intent too, and goes in the same log. "
         "When someone states, refines or changes intent, capture it before the session ends, then "
-        "update `intent/vision.md` (and `plan/requirements.md` if affected). **Before ending a session, "
+        "update `intent/vision.md` (and `plan/requirements.md` if affected). "
+        "When a message answers your questions and can't be understood without them (\"1: yes, 2: no\"), "
+        "add `--question \"<the question, quoted exactly>\"` for each question it depends on; the tool checks "
+        "they're your words from that session and marks them as not intent. That's a judgment call, not a rule: "
+        "if the words make sense on their own, add no question, and never add more than the words need. "
+        "**Before ending a session, "
         "run `--list` again: every message not marked `*` that states, refines or changes intent needs "
         "an entry.** Count; don't trust the filter.",
         "**Current-view documents carry no history.** `intent/vision.md` and `plan/requirements.md` say "

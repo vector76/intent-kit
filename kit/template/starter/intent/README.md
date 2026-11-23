@@ -25,6 +25,22 @@ from whatever branch or worktree you are in. One entry can span several messages
 the same conversation. Not every message is intent ("go ahead", "looks good"), so
 capture the ones that state, refine or change what is wanted.
 
+## Answers to the agent's questions
+
+Some messages only make sense next to the question they answer ("1: yes, 2: no"). For
+those, add the questions the words depend on:
+
+```
+python {{TOOLS}}/extract_human_messages.py <session-id> --slug short-name --msg 9 \
+    --question "Keep a separate attribution file, or add an author: line to each entry?"
+```
+
+The tool checks that each question is quoted exactly from the agent's earlier words in
+that session. It adds them after the human's words, as a block marked as not intent.
+This is a judgment call, not a rule. When a message makes sense on its own, add no
+question. When most of it does and one part doesn't, quote only the question that part
+needs. Long or awkward text can go in a file (`--question-file`).
+
 ## According to whom
 
 Each entry's `author:` is the person who typed the words, taken from the session they

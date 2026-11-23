@@ -76,6 +76,11 @@ def user(text, ts, **flags):
     return {"type": "user", "timestamp": ts, "message": {"role": "user", "content": text}, **flags}
 
 
+def agent(text, ts, **flags):
+    return {"type": "assistant", "timestamp": ts,
+            "message": {"role": "assistant", "content": [{"type": "text", "text": text}]}, **flags}
+
+
 class KitTest(unittest.TestCase):
     def setUp(self):
         self.e = Env()
@@ -617,6 +622,35 @@ class KitTest(unittest.TestCase):
         rules = (root / "METHOD-RULES.md").read_text(encoding="utf-8")
         self.assertIn("Every entry says according to whom", rules)
         self.assertIn("never decide between people", rules)
+
+    def test_answers_can_carry_the_agents_questions(self):
+        root = self.new_project()
+        q1 = "1. Should the header be blue or red?"
+        q2 = "2. Keep the old logo,\n   or draw a new one?"
+        self.e.transcript(root, SID_A, [
+            user("Make a header.", "2026-01-02T00:00:01Z"),
+            agent(f"Two questions:\n\n{q1}\n{q2}", "2026-01-02T00:00:02Z"),
+            agent("A subagent's question?", "2026-01-02T00:00:03Z", isSidechain=True),
+            user("1: blue 2: new", "2026-01-02T00:00:04Z"),
+            agent("Later: anything else?", "2026-01-02T00:00:05Z"),
+        ])
+        qf = self.e.tmp / "q2.txt"
+        qf.write_text(q2, encoding="utf-8")
+        self.e.tool(root, "extract_human_messages.py", SID_A, "--slug", "header", "--msg", "2",
+                    "--question", q1, "--question-file", qf)
+        body = (root / "intent/log/I-0001-header.md").read_text(encoding="utf-8")
+        self.assertIn("1: blue 2: new\n\n<!-- Not intent: the agent's question(s)", body)
+        self.assertIn("> 1. Should the header be blue or red?\n\n> 2. Keep the old logo,\n>    or draw a new one?\n",
+                      body)
+        # the human's words are still what the entry holds: the message shows as captured
+        self.assertRegex(self.e.tool(root, "extract_human_messages.py", SID_A, "--list").stdout, r"2\* .*1: blue")
+        # only the agent's own words from before the answer, quoted exactly
+        for q in ("Should the header be green?", "A subagent's question?", "Later: anything else?"):
+            r = self.e.tool(root, "extract_human_messages.py", SID_A, "--slug", "x", "--msg", "2",
+                            "--question", q, ok=False)
+            self.assertIn("not the agent's words", r.stderr, q)
+        self.assertEqual(self.main_files(root, "intent/log"), ["intent/log/I-0001-header.md"])
+        self.assertIn("--question", (root / "METHOD-RULES.md").read_text(encoding="utf-8"))
 
     def test_bootstrap_asks_what_to_call_the_owner(self):
         r = self.e.py(BOOTSTRAP, "init", self.e.tmp / "p", "--name", "P", "--dry-run")
