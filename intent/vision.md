@@ -16,11 +16,62 @@ The current view of what intent-kit is. It is a synthesis built from the
 
 ## What it is
 
-A reusable setup that bootstraps new or existing projects into traceable, intent-driven development: verbatim intent, current-view projections, and a private session record.
+A reusable package that brings a project into traceable, intent-driven development. That
+means intent recorded verbatim, projected into a current vision and plan, with every
+output traced back to its session and a private record of the sessions themselves. It
+works for new projects and for existing ones not yet run this way, and it can be
+imported into them. [I-0001]
 
-*(Not yet synthesized: to be written from the owner's first intent entries.)*
+It distills the machinery first built for earlier projects (the intent log, the
+requirements, session recording and the scripts behind them), including the
+improvements found while using it. [I-0001]
+
+## What it contains
+
+- **A clean write-up of the philosophy.** The owner first laid it out as spoken,
+  transcribed prompts, full of speech-to-text slips. The kit has it as a neat document
+  that a new project starts from. [I-0001]
+- **Templates and scripts**: the folder structure, starter documents and the Python
+  tools that capture sessions and intent. [I-0001]
+- **An onboarding phase.** When a project is first brought in, the owner answers a set of
+  configuration questions, and the answers are recorded so the repository respects them.
+  [I-0003]
+
+## How it handles parallel work
+
+- **It is worktree-aware in general**, not only for one tool. Any session may run in a
+  worktree (Claude Code's, Backplane's or the owner's own), and capturing intent there
+  must not cause collisions or tangle the numbering. [I-0002] Backplane is what first
+  forced the issue, but the owner wasn't seeking worktrees out. [I-0002]
+- **Numbers are sequential, and entries are committed to main when they're captured.**
+  [I-0003]
+- **Intent captured in a worktree that never lands still reaches main.** That's accepted:
+  most worktrees will land. [I-0004]
+
+## The record of sessions
+
+- **It is always a separate repository**, never part of the project repo, to reduce the
+  chance of leaking something by accident. [I-0004]
+- **It can still have a remote**, so one or more people can merge, push and pull it for
+  traceability and after-the-fact review. [I-0004]
+
+## Intent about the method
+
+- **Intent about the project and intent about the recording method share one log**, with
+  no marks or separation. [I-0005] If a clean, project-only rendering of the intent is
+  ever wanted, it can be produced from the log on request. That isn't planned or
+  suggested; it's just available. [I-0005]
 
 ## Open questions and tensions
 
-*(Contradictions between intent entries, or between a request and this vision, are
-listed here and put to the owner. None yet.)*
+- **Which configuration options onboarding should offer.** The owner named the record's
+  location as one, then made it fixed (I-0004), and didn't know the others offhand
+  (I-0003). The current set (visibility, layers, stances, landing policy, push on landing,
+  agents, Backplane, tools folder) was proposed by the agent and accepted in passing
+  ("everything else I think makes sense", I-0004). It hasn't been confirmed item by item.
+- **The kit's own settings are the kit's defaults, not the owner's choices.** That covers
+  visibility (confidential), landing (linear) and the rest. Whether the kit may ever be
+  published is open, as is its name: "intent-kit" is a placeholder.
+- **Moving the existing projects onto the kit.** Projects already using the earlier
+  version of the machinery could be upgraded to it, or left as they are. The owner hasn't
+  said which.
