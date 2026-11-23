@@ -22,6 +22,8 @@ This folder is the whole kit: everything a project gets comes from here.
 
 ## Quick start
 
+Needs git and Python 3.10 or later; onboarding checks for both.
+
 In a Claude Code session in the target project's folder:
 
 > Set this project up with the intent kit at `<path to this folder>`; read its ONBOARDING.md.
@@ -41,8 +43,9 @@ intent/log/             the owner's words, verbatim, append-only (I-0001), empty
 intent/vision.md        the current view, synthesized from the log
 plan/                   requirements (R-), decisions (D-), lessons (L-), empty to start
 research/ concepts/ experiments/    optional layers (N-, C-, E-)
-tools/                  capture, extract, to_main, sync, land, kit (check / render / cite)
+tools/                  capture, extract, to_main, sync, land, kit (check / render / cite / record)
 .githooks/              Session: trailer on every commit
 .claude/settings.json   hooks that copy each session's transcript into record/
-record/                 a separate private git repo, ignored by the project
+record/                 a separate private git repo, ignored by the project, with its own
+                        private remote if the owner wants one
 ```

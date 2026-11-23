@@ -381,6 +381,69 @@ class KitTest(unittest.TestCase):
         self.e.tool(wa, "extract_human_messages.py", SID_A, "--slug", "from-a", "--msg", "1")
         self.assertTrue((wa / "intent/log/I-0001-from-a.md").is_file())
 
+    def test_python_command(self):
+        bad = self.e.tmp / "bad"
+        r = self.e.py(BOOTSTRAP, "init", bad, "--name", "Bad", "--python", "no-such-python-here", ok=False)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("doesn't run here", r.stdout + r.stderr)
+        self.assertFalse(bad.exists())  # nothing written
+        root = self.new_project()  # detected
+        self.assertIn(json.loads((root / "intent-kit.json").read_text())["python"], ("python3", "python", "py -3"))
+        root = self.new_project("proj2", "--python", sys.executable)
+        cfg = json.loads((root / "intent-kit.json").read_text())
+        self.assertEqual(cfg["python"], sys.executable)
+        cmds = [h["command"] for g in json.loads((root / ".claude/settings.json").read_text())["hooks"]["Stop"]
+                for h in g["hooks"]]
+        self.assertTrue(any(c.startswith(sys.executable) or c.startswith(f'"{sys.executable}"') for c in cmds))
+        self.assertIn(f"{sys.executable} tools/to_main.py", (root / "METHOD-RULES.md").read_text(encoding="utf-8"))
+        cfg["python"] = "no-such-python-here"
+        (root / "intent-kit.json").write_text(json.dumps(cfg), encoding="utf-8")
+        self.e.tool(root, "kit.py", "render")
+        r = self.e.tool(root, "kit.py", "check", ok=False)
+        self.assertIn("doesn't run here", r.stdout)
+        cmds = [h["command"] for g in json.loads((root / ".claude/settings.json").read_text())["hooks"]["Stop"]
+                for h in g["hooks"]]
+        self.assertTrue(cmds[0].startswith("no-such-python-here "))  # render keeps the hooks in step
+
+    def test_record_remote(self):
+        bare = self.e.tmp / "record-remote.git"
+        self.e.git(self.e.tmp, "init", "-q", "--bare", bare)
+        r = self.e.py(BOOTSTRAP, "init", self.e.tmp / "nope", "--name", "N", "--record-remote",
+                      self.e.tmp / "missing.git", ok=False)
+        self.assertIn("can't reach the record remote", r.stdout + r.stderr)
+        self.assertFalse((self.e.tmp / "nope").exists())
+        root = self.new_project("proj", "--record-remote", bare)
+        self.assertIn("README.md", self.e.git(bare, "ls-tree", "--name-only", "main").stdout)  # pushed
+        self.assertEqual(self.e.git(root / "record", "rev-parse", "--abbrev-ref", "@{u}").stdout.strip(), "origin/main")
+        t = self.e.transcript(root, SID_A, [user("hello", "2026-01-02T00:00:00Z")])
+        self.e.tool(root, "capture_session.py", input=json.dumps(
+            {"hook_event_name": "SessionEnd", "session_id": SID_A, "transcript_path": str(t)}))
+        self.e.git(root / "record", "push", "-q")
+        self.assertNotIn("has no remote", self.e.tool(root, "kit.py", "check").stdout)
+
+        # a fresh clone of the project has no record/ until it's set up
+        clone = self.e.tmp / "clone"
+        self.e.git(self.e.tmp, "clone", "-q", root, clone)
+        self.e.git(clone, "config", "core.hooksPath", ".githooks")
+        r = self.e.tool(clone, "kit.py", "check", ok=False)
+        self.assertIn("record/ is not set up", r.stdout)
+        t2 = self.e.transcript(clone, SID_B, [user("hi", "2026-01-03T00:00:00Z")])
+        r = self.e.tool(clone, "capture_session.py", input=json.dumps(
+            {"hook_event_name": "SessionStart", "session_id": SID_B, "transcript_path": str(t2)}))
+        self.assertIn("NOT being recorded", r.stdout)
+        self.assertFalse((clone / "record").exists())
+        self.e.tool(clone, "kit.py", "record", "--remote", bare)
+        self.assertTrue((clone / "record" / "sessions" / f"2026-01-02_{SID_A}.jsonl").is_file())  # checked out
+        self.e.tool(clone, "kit.py", "check")
+
+        # a record with no remote yet gets one later, and is pushed to it
+        solo = self.new_project("solo")
+        self.assertIn("has no remote", self.e.tool(solo, "kit.py", "check").stdout)
+        bare2 = self.e.tmp / "solo-record.git"
+        self.e.git(self.e.tmp, "init", "-q", "--bare", bare2)
+        self.e.tool(solo, "kit.py", "record", "--remote", bare2)
+        self.assertIn("README.md", self.e.git(bare2, "ls-tree", "--name-only", "main").stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

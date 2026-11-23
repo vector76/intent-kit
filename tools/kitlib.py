@@ -44,6 +44,7 @@ DEFAULTS = {
     "summary": "",
     "main_branch": "main",
     "tools_dir": "tools",
+    "python": "python",                # the command the hooks and rules use to run the tools
     "visibility": "confidential",      # confidential | publishable
     "layers": [],                      # research, concepts, experiments
     "stances": [],                     # wide-search, forward-plausibility
@@ -175,12 +176,33 @@ def find_transcript(sid: str) -> Path | None:
     return None
 
 
-def record_problem() -> str | None:
-    """None if record/ is safely private: ignored by this repo and not tracked by it."""
+def record_problem(need_repo: bool = True) -> str | None:
+    """None if record/ is safely private (ignored by this repo, not tracked by it) and, with
+    need_repo, set up as its own git repository."""
     if git("ls-files", "--", "record", cwd=MAIN).stdout.strip():
         return "record/ is tracked by the project repository"
     if git("check-ignore", "-q", "--no-index", "record/sessions/x.jsonl", cwd=MAIN).returncode != 0:
         return "record/ is not ignored by the project's .gitignore"
+    if need_repo and not (RECORD / ".git").exists():
+        return ("record/ is not set up as its own git repository (in the main checkout: "
+                "python tools/kit.py record [--remote <private url>])")
+    return None
+
+
+MIN_PYTHON = (3, 10)
+
+
+def python_version(cmd: str) -> tuple[int, int] | None:
+    """The (major, minor) version that `cmd` runs, or None if it doesn't run."""
+    try:
+        argv = [cmd] if Path(cmd).is_file() else cmd.split()  # "python3", "py -3" or a full path
+        r = subprocess.run([*argv, "-c", "import sys; print(*sys.version_info[:2])"],
+                           capture_output=True, text=True, timeout=30)
+        if r.returncode == 0:
+            major, minor = (int(x) for x in r.stdout.split()[:2])
+            return major, minor
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        pass
     return None
 
 

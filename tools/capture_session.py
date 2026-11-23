@@ -95,8 +95,6 @@ def main():
         print(f"capture_session: synced {n} session(s) into {SESSIONS}")
         if "--commit" in sys.argv:
             commit_record(f"sync {n} session(s)")
-        if not (RECORD / ".git").exists():
-            print("capture_session: WARNING: record/ is not a git repository; run python tools/kit.py check")
         return
 
     try:

@@ -6,6 +6,10 @@
   python tools/kit.py check     verify the setup; exit 1 if anything is wrong
   python tools/kit.py cite <session-id> --msg N [N ...] --keys visibility,layers
                                 record which of the owner's messages set those choices
+  python tools/kit.py record [--remote URL]
+                                set record/ up as its own git repo (on a fresh clone too), and
+                                connect it to a private remote: an empty one gets the record
+                                pushed to it, one that already holds the record is checked out
 
 METHOD-RULES.md is generated: to change how the project is run, change intent-kit.json
 (citing what asked for it under "sources"), re-render, and publish both with
@@ -20,13 +24,14 @@ Managed by intent-kit.
 """
 import argparse
 import json
+import os
 import re
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from kitlib import (CONFIG_NAME, DEFAULTS, MAIN, RECORD, REPO, TARGET, git, kinds,  # noqa: E402
-                    load_config, main_tree_files, record_problem)
+from kitlib import (CONFIG_NAME, DEFAULTS, MAIN, MIN_PYTHON, RECORD, REPO, TARGET, git,  # noqa: E402
+                    kinds, load_config, main_tree_files, python_version, record_problem)
 
 RULES_NAME = "METHOD-RULES.md"
 IMPORT = "@" + RULES_NAME
@@ -43,6 +48,7 @@ CLAUDE_POINTER = (
 
 def render_rules(cfg: dict) -> str:
     t = cfg.get("tools_dir", "tools")
+    py = cfg.get("python") or "python"
     layers = cfg.get("layers", [])
     stances = cfg.get("stances", [])
     k = kinds(cfg)
@@ -75,7 +81,7 @@ def render_rules(cfg: dict) -> str:
 
     rules = [
         "**Intent is the owner's words, verbatim and append-only.** Never edit or paraphrase "
-        f"`intent/log/`. Capture new intent with `python {t}/extract_human_messages.py <session-id> "
+        f"`intent/log/`. Capture new intent with `{py} {t}/extract_human_messages.py <session-id> "
         "--slug <name> --msg <n> [...]` (see `intent/README.md`); it commits the entry to main at once. "
         "Intent about how the project is run and recorded is intent too, and goes in the same log. "
         "When the owner states, refines or changes intent, capture it before the session ends, then "
@@ -141,7 +147,7 @@ def render_rules(cfg: dict) -> str:
     push = " Then it pushes main to every remote." if cfg.get("push_on_land", True) else ""
     branches = [
         "**Numbered entries go straight to main when they are created**, whatever branch or worktree "
-        f"you are in. `extract_human_messages.py` does this for intent; `python {t}/to_main.py <kind> "
+        f"you are in. `extract_human_messages.py` does this for intent; `{py} {t}/to_main.py <kind> "
         f"--slug <name> --file <draft.md>` does it for {kind_list} (kinds: {', '.join(entry_kinds)}). "
         "Write the draft outside tracked files (a temp or scratch folder) with `{ID}` where the number "
         "goes. The "
@@ -152,15 +158,15 @@ def render_rules(cfg: dict) -> str:
            "from main.")
         + (" For an experiment this creates its folder's README on main; the work then continues on your "
            "branch" + ("." if cfg.get("sync_after_to_main") else
-                       f" once you've synced it (`python {t}/sync.py`).")
+                       f" once you've synced it (`{py} {t}/sync.py`).")
            if "experiments" in layers else ""),
         "**Current-view documents go to main right after you edit them:** `intent/vision.md`, everything "
-        f"under `plan/`, `CLAUDE.md`, `{CONFIG_NAME}` and `{RULES_NAME}`. Run `python {t}/to_main.py docs -m \"<what "
+        f"under `plan/`, `CLAUDE.md`, `{CONFIG_NAME}` and `{RULES_NAME}`. Run `{py} {t}/to_main.py docs -m \"<what "
         "changed>\"`. If main's copy changed in a conflicting way, nothing is copied and the conflict is "
         "reported. That usually means two threads disagree: tell the owner rather than resolving it.",
-        f"**Everything else waits for landing:** `python {t}/land.py [branch]` {land}.{push} Land when "
+        f"**Everything else waits for landing:** `{py} {t}/land.py [branch]` {land}.{push} Land when "
         "the owner asks. Intent captured in a worktree that never lands is still on main; that's intended.",
-        f"At the start of a session in a worktree or on a branch other than main, run `python {t}/sync.py` "
+        f"At the start of a session in a worktree or on a branch other than main, run `{py} {t}/sync.py` "
         "to bring it up to date. On a conflict it changes nothing; tell the owner.",
         "Before relying on a worktree's isolation, check `git worktree list`. In a checkout another agent "
         "may also be using, commit only your own paths (`git commit -- <paths>`), never `git commit -a` "
@@ -172,10 +178,12 @@ def render_rules(cfg: dict) -> str:
         f"Hooks in `.claude/settings.json` run `{t}/capture_session.py`. It copies each session's "
         "transcript into `record/sessions/` (worktree sessions included) and commits the record repo at "
         f"session start, every {cfg.get('record_commit_every', 10)} turns and at session end. Sweep by "
-        f"hand with `python {t}/capture_session.py --all --commit`. Commits here get a `Session: <id>` "
+        f"hand with `{py} {t}/capture_session.py --all --commit`. Commits here get a `Session: <id>` "
         "trailer from `.githooks/prepare-commit-msg` (enabled by `git config core.hooksPath .githooks`), "
         "linking each commit to the session that made it; don't remove it. "
-        f"`python {t}/kit.py check` verifies the whole setup.")
+        f"`{py} {t}/kit.py check` verifies the whole setup. If the session start says the session is NOT "
+        "being recorded, tell the owner. On a fresh clone the fix is usually `git config core.hooksPath "
+        f".githooks` and `{py} {t}/kit.py record --remote <the record's private url>`.")
     if cfg.get("agents", "claude-only") == "claude-only":
         capture += ("\n\nUse Claude as the agent here: other agents leave no Claude transcript, so their "
                     "sessions would be missing from the record.")
@@ -242,7 +250,7 @@ def render_rules(cfg: dict) -> str:
               "at onboarding are cited by session and message (the words are in the record), not captured "
               "as intent: setting the project up isn't intent about the project. A change the owner asks "
               "for later is captured as intent like anything else, then cited by its I- id: "
-              f"`python {t}/kit.py cite <session-id> --msg <n> --keys <setting>` or edit the config by hand."]
+              f"`{py} {t}/kit.py cite <session-id> --msg <n> --keys <setting>` or edit the config by hand."]
     return "\n".join(parts) + "\n"
 
 
@@ -256,6 +264,25 @@ def with_import(text: str) -> str:
     if any(line.strip() == IMPORT for line in text.splitlines()):
         return text
     return text.rstrip() + "\n\n" + CLAUDE_POINTER
+
+
+HOOK_EVENTS = ("SessionStart", "Stop", "SessionEnd")
+
+
+def hook_command(cfg: dict) -> str:
+    py = cfg.get("python") or "python"
+    if " " in py and Path(py).is_file():
+        py = f'"{py}"'
+    return f'{py} "$CLAUDE_PROJECT_DIR/{cfg.get("tools_dir", "tools")}/capture_session.py"'
+
+
+def capture_hooks(settings: dict):
+    """Every capture_session.py hook entry in a settings.json object, by event."""
+    for event in HOOK_EVENTS:
+        for grp in settings.get("hooks", {}).get(event, []):
+            for h in grp.get("hooks", []):
+                if "capture_session.py" in h.get("command", ""):
+                    yield event, h
 
 
 def render(root: Path = REPO) -> bool:
@@ -274,6 +301,19 @@ def render(root: Path = REPO) -> bool:
         path.write_text(new, encoding="utf-8", newline="\n")
         print(f"kit: CLAUDE.md now imports {RULES_NAME}")
         changed = True
+    sp = root / ".claude" / "settings.json"
+    try:
+        settings = json.loads(sp.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        settings = None
+    if settings is not None:
+        want, fixed = hook_command(cfg), 0
+        for _, h in capture_hooks(settings):
+            if h.get("command") != want:
+                h["command"], fixed = want, fixed + 1
+        if fixed:
+            sp.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8", newline="\n")
+            print(f"kit: .claude/settings.json hooks now run {want}")
     print("kit: publish with tools/to_main.py docs" if changed else "kit: rules already current")
     return changed
 
@@ -299,6 +339,76 @@ def cite(session: str, msgs: list[int], keys: list[str], root: Path = REPO):
           "(publish with tools/to_main.py docs)")
 
 
+RECORD_README = """# Record (private)
+
+The raw session transcripts of {project}, copied here by the project's
+`capture_session.py` hooks, and candid notes (`notes/`). This is its own git repository,
+deliberately kept out of the project repository: transcripts hold system prompts, file
+contents, tool output and personal details.
+
+Never publish it. It may have a private remote of its own, for backup or so that
+several people can push and pull the record. Session files are named by their unique
+session id, so merging records from several machines doesn't conflict.
+"""
+
+
+def setup_record(remote: str | None = None) -> int:
+    """Make record/ its own git repo if it isn't, and connect it to a private remote."""
+    p = record_problem(need_repo=False)
+    if p:
+        sys.exit(f"kit: FAILED: {p}; record/ was left as it is")
+    quiet = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}  # fail rather than wait for a password
+    RECORD.mkdir(parents=True, exist_ok=True)
+    if not (RECORD / ".git").exists():
+        git("init", "-q", "-b", "main", cwd=RECORD, check=True)
+        print("kit: record/ is now its own git repository")
+    remote_branch = None
+    if remote:
+        have = git("remote", "get-url", "origin", cwd=RECORD)
+        if have.returncode == 0 and have.stdout.strip() != remote:
+            sys.exit(f"kit: FAILED: record/ already has a remote 'origin' ({have.stdout.strip()}); "
+                     "change it with git -C record remote set-url origin <url>")
+        if have.returncode != 0:
+            git("remote", "add", "origin", remote, cwd=RECORD, check=True)
+        f = git("fetch", "-q", "origin", cwd=RECORD, env=quiet)
+        if f.returncode != 0:
+            sys.exit(f"kit: FAILED: can't fetch the record's remote {remote}:\n{f.stderr.strip()}")
+        heads = git("for-each-ref", "--format=%(refname:lstrip=3)", "refs/remotes/origin", cwd=RECORD).stdout.split()
+        heads = [h for h in heads if h != "HEAD"]
+        remote_branch = "main" if "main" in heads else (heads[0] if heads else None)
+    has_commits = git("rev-parse", "-q", "--verify", "HEAD", cwd=RECORD).returncode == 0
+    if remote_branch and not has_commits:
+        r = git("checkout", "-q", "-B", remote_branch, "--track", f"origin/{remote_branch}", cwd=RECORD)
+        if r.returncode != 0:
+            sys.exit(f"kit: FAILED: can't check out the record from {remote}:\n{r.stderr.strip()}\n"
+                     "Files already in record/ are in the way; move them aside and run this again.")
+        print(f"kit: record/ checked out from {remote}")
+        has_commits = True
+    elif remote_branch and git("merge-base", "HEAD", f"origin/{remote_branch}", cwd=RECORD).returncode != 0:
+        print(f"kit: record/ and {remote} both hold a record, with unrelated histories. Nothing was merged; "
+              f"to combine them: git -C record pull --allow-unrelated-histories origin {remote_branch}")
+    (RECORD / "sessions").mkdir(exist_ok=True)
+    (RECORD / "notes").mkdir(exist_ok=True)
+    readme = RECORD / "README.md"
+    if not readme.exists():
+        project = load_config().get("project") or MAIN.name
+        readme.write_text(RECORD_README.format(project=project), encoding="utf-8", newline="\n")
+    git("add", "-A", cwd=RECORD)
+    if git("diff", "--cached", "--quiet", cwd=RECORD).returncode != 0:
+        git("commit", "-q", "-m", "Set up the record" if has_commits else "Start the private record",
+            cwd=RECORD, check=True)
+    if remote and not remote_branch:  # an empty remote: give it the record and track it
+        branch = git("symbolic-ref", "--short", "HEAD", cwd=RECORD).stdout.strip() or "main"
+        r = git("push", "-q", "-u", "origin", branch, cwd=RECORD, env=quiet)
+        if r.returncode != 0:
+            print(f"kit: PROBLEM: couldn't push the record to {remote}:\n{r.stderr.strip()}")
+            return 1
+        print(f"kit: record/ pushed to {remote} and tracks it")
+    elif remote:
+        print("kit: record/ tracks its remote; push and pull it like any repo (git -C record push)")
+    return 0
+
+
 def check(root: Path = REPO) -> list[str]:
     problems, notes = [], []
     cfg_path = root / CONFIG_NAME
@@ -314,8 +424,17 @@ def check(root: Path = REPO) -> list[str]:
     p = record_problem()
     if p:
         problems.append(p)
-    if not (RECORD / ".git").exists():
-        problems.append("record/ is not a git repository of its own (git init it, in the main checkout)")
+    elif not git("remote", cwd=RECORD).stdout.strip():
+        notes.append(f"record/ has no remote, so it exists only on this machine "
+                     f"(python {t}/kit.py record --remote <private url>)")
+    py = cfg.get("python") or "python"
+    v = python_version(py)
+    if v is None:
+        problems.append(f"{py!r}, the Python command in {CONFIG_NAME}, doesn't run here, so the hooks "
+                        "record nothing. Set \"python\" to one that does (python3, python, py -3 or a "
+                        f"full path) and run python {t}/kit.py render")
+    elif v < MIN_PYTHON:
+        problems.append(f"{py!r} is Python {v[0]}.{v[1]}; the tools need {MIN_PYTHON[0]}.{MIN_PYTHON[1]} or later")
     if git("config", "core.hooksPath", cwd=root).stdout.strip() != ".githooks":
         problems.append("core.hooksPath is not .githooks, so commits get no Session: trailer "
                         "(git config core.hooksPath .githooks)")
@@ -328,10 +447,12 @@ def check(root: Path = REPO) -> list[str]:
         hooks = json.loads((root / ".claude" / "settings.json").read_text(encoding="utf-8")).get("hooks", {})
     except (OSError, json.JSONDecodeError):
         hooks = {}
-    for event in ("SessionStart", "Stop", "SessionEnd"):
-        cmds = [h.get("command", "") for grp in hooks.get(event, []) for h in grp.get("hooks", [])]
-        if not any("capture_session.py" in c for c in cmds):
+    found = list(capture_hooks({"hooks": hooks}))
+    for event in HOOK_EVENTS:
+        if not any(e == event for e, _ in found):
             problems.append(f".claude/settings.json has no {event} hook running capture_session.py")
+    if any(h.get("command") != hook_command(cfg) for _, h in found):
+        problems.append(f".claude/settings.json hooks don't run {hook_command(cfg)} (python {t}/kit.py render)")
     claude = root / "CLAUDE.md"
     text = claude.read_text(encoding="utf-8") if claude.is_file() else ""
     if with_import(text) != text:
@@ -384,6 +505,10 @@ def main():
         ap.add_argument("--keys", required=True, help="comma-separated config settings")
         a = ap.parse_args(sys.argv[2:])
         cite(a.session, a.msg, [k.strip() for k in a.keys.split(",") if k.strip()])
+    elif cmd == "record":
+        ap = argparse.ArgumentParser(prog="kit.py record")
+        ap.add_argument("--remote", help="URL of a private git repository for the record")
+        sys.exit(setup_record(ap.parse_args(sys.argv[2:]).remote))
     elif cmd == "check":
         problems = check()
         for p in problems:

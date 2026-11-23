@@ -20,6 +20,10 @@ Choices (see ONBOARDING.md for what each means; the agent asks the owner):
   --backplane                                the project uses Backplane
   --main-branch NAME                         default: current branch, or main
   --tools-dir PATH                           default tools
+  --python CMD                               how the hooks run Python (python3, python, py -3 or a
+                                             path); default: the first of those that runs 3.10+
+  --record-remote URL                        a private git repo for record/: an empty one gets the
+                                             record pushed to it; one holding the record is checked out
   --config answers.json                      the same choices as a JSON object
 
 upgrade compares the project's kit-managed files (the tools, the commit hook and
@@ -31,6 +35,7 @@ CLAUDE.md). Project content is never touched.
 import argparse
 import difflib
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -52,12 +57,39 @@ GITIGNORE = ["/record/", "/.claude/current-session", "/.claude/record-turns/",
 NEW_ONLY_GITIGNORE = ["/out/"]
 NEW_ONLY_STARTERS = [".gitattributes"]
 HOOK_EVENTS = ["SessionStart", "Stop", "SessionEnd"]
-ADDED_SETTINGS = {"sync_after_to_main": False}
+ADDED_SETTINGS = {"sync_after_to_main": False, "python": "python"}  # what older kits' hooks ran
+MIN_PYTHON = (3, 10)
+QUIET = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
 
 
-def git(*args, cwd, check=False, input=None):
+def python_version(cmd: str):
+    """(major, minor) that `cmd` runs, or None. The same check as tools/kitlib.py."""
+    try:
+        argv = [cmd] if Path(cmd).is_file() else cmd.split()
+        r = subprocess.run([*argv, "-c", "import sys; print(*sys.version_info[:2])"],
+                           capture_output=True, text=True, timeout=30)
+        if r.returncode == 0:
+            major, minor = (int(x) for x in r.stdout.split()[:2])
+            return major, minor
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        pass
+    return None
+
+
+def find_python() -> str | None:
+    """The first usual Python command that runs a new enough Python here. On Windows, plain
+    `python3` is often the Store's placeholder, so it's tried last."""
+    names = ["python", "py -3", "python3"] if os.name == "nt" else ["python3", "python"]
+    for name in names:
+        v = python_version(name)
+        if v and v >= MIN_PYTHON:
+            return name
+    return None
+
+
+def git(*args, cwd, check=False, input=None, env=None):
     r = subprocess.run(["git", "-C", str(cwd), *args], capture_output=True, text=True,
-                       encoding="utf-8", input=input)
+                       encoding="utf-8", input=input, env=env)
     if check and r.returncode != 0:
         sys.exit(f"bootstrap: FAILED: git {' '.join(args)}:\n{r.stderr.strip() or r.stdout.strip()}")
     return r
@@ -119,7 +151,7 @@ def claude_text(cfg: dict) -> str:
 def merged_settings(path: Path, cfg: dict) -> str | None:
     """New settings.json text with the capture hooks added, or None if nothing to add."""
     data = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
-    cmd = f'python "$CLAUDE_PROJECT_DIR/{cfg["tools_dir"]}/capture_session.py"'
+    cmd = f'{cfg["python"]} "$CLAUDE_PROJECT_DIR/{cfg["tools_dir"]}/capture_session.py"'
     hooks = data.setdefault("hooks", {})
     changed = False
     for ev in HOOK_EVENTS:
@@ -141,6 +173,7 @@ def choices(a) -> dict:
         "stances": [x for x in a.stances.split(",") if x] if a.stances is not None else None,
         "push_on_land": False if a.no_push else None, "backplane": True if a.backplane else None,
         "sync_after_to_main": True if a.sync_after_to_main else None,
+        "python": a.python,
     }
     cfg.update({k: v for k, v in given.items() if v is not None})
     defaults = {"summary": "", "visibility": "confidential", "layers": [], "stances": [],
@@ -163,6 +196,16 @@ def choices(a) -> dict:
         errors.append(f"unknown layers: {', '.join(bad)}")
     if bad := [x for x in cfg["stances"] if x not in STANCES]:
         errors.append(f"unknown stances: {', '.join(bad)}")
+    if not cfg.get("python"):
+        cfg["python"] = find_python()
+        if not cfg["python"]:
+            errors.append("no Python 3.10 or later runs here as python3, python or py -3, and the hooks need "
+                          "one. Install Python (the owner does this), or pass --python <command or path>")
+    else:
+        v = python_version(cfg["python"])
+        if not v or v < MIN_PYTHON:
+            errors.append(f"--python {cfg['python']!r} " + (f"is Python {v[0]}.{v[1]}; the tools need 3.10 or later"
+                                                            if v else "doesn't run here"))
     if errors:
         sys.exit("bootstrap: " + "; ".join(errors))
     return cfg
@@ -187,7 +230,7 @@ def init(a):
     cfg.setdefault("main_branch", "main")
     cfg["main_branch"] = cfg["main_branch"] or "main"
     config = {"kit_version": VERSION, **{k: cfg[k] for k in (
-        "project", "summary", "main_branch", "tools_dir", "visibility", "layers", "stances", "landing",
+        "project", "summary", "main_branch", "tools_dir", "python", "visibility", "layers", "stances", "landing",
         "push_on_land", "sync_after_to_main", "agents", "backplane", "record_commit_every", "not_human_prefixes",
         "sources")}}
 
@@ -211,6 +254,9 @@ def init(a):
         if own.is_file() and not hp:
             blockers.append(".git/hooks/prepare-commit-msg exists and would stop running; merge it into "
                             ".githooks/ by hand first")
+    remote = a.record_remote
+    if remote and git("ls-remote", remote, cwd=root if root.exists() else KIT, env=QUIET).returncode != 0:
+        blockers.append(f"can't reach the record remote {remote} (check the URL and that you can read it)")
     settings = root / ".claude" / "settings.json"
     try:
         new_settings = merged_settings(settings, cfg)
@@ -267,7 +313,9 @@ def init(a):
         print(f"  {verb:6} {rel}")
     for rel in skipped:
         print(f"  keep   {rel} (exists; left as it is)")
-    print(f"  record/ as its own git repo{' (exists)' if (root / 'record' / '.git').exists() else ''}")
+    print(f"  record/ as its own git repo{' (exists)' if (root / 'record' / '.git').exists() else ''}"
+          + (f", remote {remote}" if remote else ", no remote (the owner can add one later)"))
+    print(f"  hooks run Python as: {cfg['python']}")
     print("  git config core.hooksPath .githooks")
     print("  render METHOD-RULES.md and import it from CLAUDE.md (one @METHOD-RULES.md line)")
     for s_ in suggestions:
@@ -286,17 +334,10 @@ def init(a):
         p.write_text(text, encoding="utf-8", newline="\n")
         if rel.startswith(".githooks/"):
             p.chmod(0o755)
-    rec = root / "record"
-    (rec / "sessions").mkdir(parents=True, exist_ok=True)
-    (rec / "notes").mkdir(exist_ok=True)
-    if not (rec / "README.md").exists():
-        (rec / "README.md").write_text(fill((STARTER / "record" / "README.md").read_text(encoding="utf-8"), cfg),
-                                       encoding="utf-8", newline="\n")
-    if not (rec / ".git").exists():
-        git("init", "-q", "-b", "main", cwd=rec, check=True)
-        git("add", "-A", cwd=rec, check=True)
-        git("commit", "-q", "-m", "Start the private record", cwd=rec, check=True)
     git("config", "core.hooksPath", ".githooks", cwd=root, check=True)
+    if run_tool(root, cfg, "record", *(["--remote", remote] if remote else [])) != 0:
+        print("bootstrap: the record isn't fully set up (see above); fix it, then run "
+              f"python {cfg['tools_dir']}/kit.py record" + (f" --remote {remote}" if remote else ""))
     run_tool(root, cfg, "render")
     if not is_repo:
         git("add", "-A", cwd=root, check=True)
@@ -384,6 +425,8 @@ def main():
     i.add_argument("--backplane", action="store_true")
     i.add_argument("--main-branch")
     i.add_argument("--tools-dir")
+    i.add_argument("--python")
+    i.add_argument("--record-remote")
     i.add_argument("--config")
     i.add_argument("--dry-run", action="store_true")
     u = sub.add_parser("upgrade")

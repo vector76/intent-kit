@@ -23,6 +23,15 @@ imports. Its intent log, decisions and lessons start empty, and fill with its ow
   Claude Code's or Backplane's (`.backplane/`)?
 - For an existing project: are there earlier Claude sessions in this folder? They're
   in `~/.claude/projects/<folder name with every non-alphanumeric character as ->/`.
+- **Python.** The hooks run the tools with Python 3.10 or later. Find a command that runs
+  one here: try `python3 --version`, `python --version` and, on Windows, `py -3 --version`.
+  On Windows, `python3` is often a placeholder that opens the Store instead of running.
+  The bootstrap does the same check, picks the first that works, and stops if none does.
+  If none does, tell the owner and stop. Installing Python is theirs to do; don't install
+  it yourself. If they want a particular one, pass it with `--python` (a command or a full
+  path).
+- **git**: `git --version`. The tools need `git merge-tree --write-tree --merge-base`,
+  which came in git 2.40.
 
 ## 2. Ask the owner
 
@@ -43,10 +52,27 @@ Where there's a default, say what it is.
 | Agents | **Claude only** (default) or any | Other agents leave no transcript; the rule says so |
 | Backplane | yes or **no** | Backplane-specific rules; skips its `[Backplane]` reports when extracting intent |
 | Tools folder | **tools** (default) | Use another (`tools/kit`) if `tools/` holds files of the same names |
+| Record remote | **none** (default), an existing private repo, or a new one | Where the record is backed up and shared. See below |
+
+**The record's remote.** Ask whether the owner has a private git repository for the
+record, wants a new one, or wants none for now (it can be added any time later).
+- **An existing one:** take its URL. If it's empty, the bootstrap pushes the new record
+  to it. If it already holds this project's record (from another machine, say), the
+  bootstrap checks it out into `record/`.
+- **A new one:** it must be **private**, and empty (no README or license), so the record
+  can be pushed to it. Either the owner creates it on their git host and gives you the
+  URL, or, if the GitHub CLI is installed and signed in (`gh auth status`) and the owner
+  says yes to this repo name, run `gh repo create <name> --private`. Then check
+  `gh repo view <name> --json visibility` says `PRIVATE` before using it. Never create a
+  public one. Creating it is the owner's call each time; don't do it on a general OK.
+- **None:** the record lives only on this machine until a remote is added
+  (`tools/kit.py check` notes this).
+
+The bootstrap checks it can reach the URL before writing anything.
 
 Some things are fixed, not choices; say so if they come up:
 - **The record is always a separate private git repo** (`record/`, ignored by the
-  project). It can have its own private remote.
+  project), whether or not it has a remote.
 - **Numbered entries are sequential and committed to main when created.** This works the
   same in worktrees, on branches and in a single checkout.
 
@@ -55,13 +81,16 @@ Some things are fixed, not choices; say so if they come up:
 ```
 python <kit>/bootstrap.py init <project> --name "..." --summary "..." \
     [--visibility publishable] [--layers research,experiments] [--stances wide-search] \
-    [--landing merge] [--no-push] [--sync-after-to-main] [--agents any] [--backplane] [--tools-dir tools/kit] --dry-run
+    [--landing merge] [--no-push] [--sync-after-to-main] [--agents any] [--backplane] [--tools-dir tools/kit] \
+    [--python python3] [--record-remote <private url>] --dry-run
 ```
 
-Show the owner the list of what will be added and merged. Then run it again without
+Show the owner the list of what will be added and merged. It includes the Python
+command the hooks will use and the record's remote. Then run it again without
 `--dry-run`.
 - **New folder:** it runs `git init`, writes everything, creates `record/` as its own
-  repo, sets `core.hooksPath` and commits the scaffold on main.
+  repo (connected to its remote, if one was given), sets `core.hooksPath` and commits the
+  scaffold on main.
 - **Existing repository:** it writes and merges but doesn't commit. Its `CLAUDE.md` keeps
   everything it had, plus a short section ending in `@METHOD-RULES.md`. Show
   `git status`. With the owner's OK, commit the scaffold on the main branch.
@@ -126,5 +155,14 @@ Then:
 - **A new kit version.** `python <kit>/bootstrap.py upgrade <project>` shows how the
   managed files (tools, commit hook, METHOD.md) differ, and `--apply` updates them and
   re-renders `METHOD-RULES.md`. It never touches the project's own content.
-- **A record remote.** `git -C record remote add <name> <private url>`, then push and pull
-  the record like any repo.
+- **A record remote added later.** `python tools/kit.py record --remote <private url>`
+  connects `record/` to it, and pushes the record if the remote is empty. After that,
+  push and pull the record like any repo (`git -C record push`).
+- **A fresh clone of the project** (another machine, or a re-clone) has no `record/`,
+  since it's ignored, and no hooks path. Until both are set up, the hooks record nothing
+  and say so at session start. Set them up with
+  `git config core.hooksPath .githooks` and `python tools/kit.py record --remote <url>`.
+  The second checks out the existing record; leave out `--remote` to start a new local
+  one. Then run `tools/kit.py check`.
+- **A different Python.** Change `"python"` in `intent-kit.json` and run
+  `tools/kit.py render`, which updates the hooks in `.claude/settings.json` to match.
