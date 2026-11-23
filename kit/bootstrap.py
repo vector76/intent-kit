@@ -15,6 +15,7 @@ Choices (see ONBOARDING.md for what each means; the agent asks the owner):
   --stances wide-search,forward-plausibility default none
   --landing linear|merge                     default linear
   --no-push                                  don't push main to remotes when landing
+  --sync-after-to-main                       bring the branch up to date after each entry or docs copy
   --agents claude-only|any                   default claude-only
   --backplane                                the project uses Backplane
   --main-branch NAME                         default: current branch, or main
@@ -44,9 +45,14 @@ TOOL_FILES = ["kitlib.py", "capture_session.py", "extract_human_messages.py", "t
               "sync.py", "land.py", "kit.py"]
 LAYERS = {"research": "research", "concepts": "concepts", "experiments": "experiments"}
 STANCES = {"wide-search", "forward-plausibility"}
-GITIGNORE = ["/record/", "/out/", "/.claude/current-session", "/.claude/record-turns/",
+GITIGNORE = ["/record/", "/.claude/current-session", "/.claude/record-turns/",
              "/.claude/settings.local.json", "__pycache__/"]
+# Only for a new project: in an existing one, an ignored out/ could hide real work, and a new
+# .gitattributes could renormalize line endings so files look changed. Suggested instead.
+NEW_ONLY_GITIGNORE = ["/out/"]
+NEW_ONLY_STARTERS = [".gitattributes"]
 HOOK_EVENTS = ["SessionStart", "Stop", "SessionEnd"]
+ADDED_SETTINGS = {"sync_after_to_main": False}
 
 
 def git(*args, cwd, check=False, input=None):
@@ -75,7 +81,7 @@ def starter_files(cfg: dict) -> dict[str, str]:
     """Project path -> text, for files the kit creates once and the project then owns."""
     s = {}
     for rel in ["intent/README.md", "intent/vision.md", "plan/requirements.md",
-                "plan/decisions/README.md", "plan/lessons/README.md", ".gitattributes"]:
+                "plan/decisions/README.md", "plan/lessons/README.md"]:
         s[rel] = fill((STARTER / rel).read_text(encoding="utf-8"), cfg)
     for layer in cfg["layers"]:
         s[f"{LAYERS[layer]}/README.md"] = fill(
@@ -134,10 +140,12 @@ def choices(a) -> dict:
         "layers": [x for x in a.layers.split(",") if x] if a.layers is not None else None,
         "stances": [x for x in a.stances.split(",") if x] if a.stances is not None else None,
         "push_on_land": False if a.no_push else None, "backplane": True if a.backplane else None,
+        "sync_after_to_main": True if a.sync_after_to_main else None,
     }
     cfg.update({k: v for k, v in given.items() if v is not None})
     defaults = {"summary": "", "visibility": "confidential", "layers": [], "stances": [],
-                "landing": "linear", "push_on_land": True, "agents": "claude-only", "backplane": False,
+                "landing": "linear", "push_on_land": True, "sync_after_to_main": False, "agents": "claude-only",
+                "backplane": False,
                 "tools_dir": "tools", "record_commit_every": 10, "not_human_prefixes": [], "sources": {}}
     cfg = {**defaults, **cfg}
     if cfg["backplane"] and "[Backplane] " not in cfg["not_human_prefixes"]:
@@ -180,7 +188,8 @@ def init(a):
     cfg["main_branch"] = cfg["main_branch"] or "main"
     config = {"kit_version": VERSION, **{k: cfg[k] for k in (
         "project", "summary", "main_branch", "tools_dir", "visibility", "layers", "stances", "landing",
-        "push_on_land", "agents", "backplane", "record_commit_every", "not_human_prefixes", "sources")}}
+        "push_on_land", "sync_after_to_main", "agents", "backplane", "record_commit_every", "not_human_prefixes",
+        "sources")}}
 
     # --- what's in the way? nothing is written until this is empty ---
     blockers = []
@@ -222,6 +231,16 @@ def init(a):
             skipped.append(rel)
         else:
             writes[rel] = text
+    suggestions = []
+    for rel in NEW_ONLY_STARTERS:
+        if (root / rel).exists():
+            continue
+        if is_repo:
+            suggestions.append(f"{rel}: none here. The kit's ({(STARTER / rel).read_text(encoding='utf-8').splitlines()[0]}, ...) "
+                               "keeps line endings consistent, but adding it to an existing repo can make files "
+                               "look changed. Check `git ls-files --eol` first.")
+        else:
+            writes[rel] = (STARTER / rel).read_text(encoding="utf-8")
     if not (root / "README.md").exists():
         writes["README.md"] = readme_text(cfg)
     if not (root / "CLAUDE.md").exists():
@@ -231,7 +250,11 @@ def init(a):
         writes[".claude/settings.json"] = new_settings
     gi = root / ".gitignore"
     have = gi.read_text(encoding="utf-8").splitlines() if gi.is_file() else []
-    missing = [ln for ln in GITIGNORE if ln not in have]
+    wanted = GITIGNORE + ([] if is_repo else NEW_ONLY_GITIGNORE)
+    missing = [ln for ln in wanted if ln not in have]
+    if is_repo and "/out/" not in have:
+        suggestions.append("out/: not ignored here. Write to_main.py drafts in a temp or scratch folder, or "
+                           "ignore a drafts folder of your choosing.")
     if missing:
         base = gi.read_text(encoding="utf-8") if gi.is_file() else ""
         sep = "" if not base else ("\n" if base.endswith("\n") else "\n\n")
@@ -247,6 +270,8 @@ def init(a):
     print(f"  record/ as its own git repo{' (exists)' if (root / 'record' / '.git').exists() else ''}")
     print("  git config core.hooksPath .githooks")
     print("  render METHOD-RULES.md and import it from CLAUDE.md (one @METHOD-RULES.md line)")
+    for s_ in suggestions:
+        print(f"  suggest (not done) {s_}")
     if a.dry_run:
         print("bootstrap: dry run; nothing was changed")
         return
@@ -333,6 +358,8 @@ def upgrade(a):
         p.write_text(starters[rel], encoding="utf-8", newline="\n")
     data = json.loads(cfg_path.read_text(encoding="utf-8"))
     data["kit_version"] = VERSION
+    for k, v in ADDED_SETTINGS.items():  # settings added in later kit versions, at their defaults
+        data.setdefault(k, v)
     cfg_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8", newline="\n")
     run_tool(root, cfg, "render")
     print(f"bootstrap: updated {len(changed) + len(new_starters)} file(s) to kit {VERSION}. Commit the tools "
@@ -352,6 +379,7 @@ def main():
     i.add_argument("--stances")
     i.add_argument("--landing")
     i.add_argument("--no-push", action="store_true")
+    i.add_argument("--sync-after-to-main", action="store_true")
     i.add_argument("--agents")
     i.add_argument("--backplane", action="store_true")
     i.add_argument("--main-branch")

@@ -4,8 +4,8 @@ Work that answers an open question or checks a requirement. This is how reality 
 back into intent: a build, a bench test, a calculation, a model or a simulation. One
 folder per experiment, `E-0001-short-name/README.md` plus any code, data and figures.
 Start one with `python {{TOOLS}}/to_main.py experiment --slug short-name --file draft.md`:
-that puts its README on main with the next number, and the work then continues on your
-branch. Template:
+that puts its README on main with the next number. Sync your branch (`python {{TOOLS}}/sync.py`)
+to bring the folder over, and carry on there. Template:
 
 ```
 ---

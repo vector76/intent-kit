@@ -49,6 +49,7 @@ DEFAULTS = {
     "stances": [],                     # wide-search, forward-plausibility
     "landing": "linear",               # linear (rebase + fast-forward) | merge
     "push_on_land": True,
+    "sync_after_to_main": False,       # sync the branch after to_main commits to main
     "agents": "claude-only",           # claude-only | any
     "backplane": False,
     "record_commit_every": 10,

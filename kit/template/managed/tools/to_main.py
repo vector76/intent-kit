@@ -12,8 +12,9 @@ ignored) with `{ID}` wherever the entry's ID goes. Under a lock shared by every
 worktree, this takes the next free number from main, writes the entry and commits
 only that file to main, with this session's `Session:` trailer. If main is checked
 out somewhere (usually the main checkout), the entry is written and committed there;
-if not, it is committed to the main branch directly. Then this branch is brought up
-to date with main (tools/sync.py), so the entry shows up here too. An experiment's
+if not, it is committed to the main branch directly. This branch doesn't get the
+entry until it next syncs (tools/sync.py), and doesn't need it: numbers come from main.
+With "sync_after_to_main" on in intent-kit.json, this branch is synced at once. An experiment's
 entry is its folder's README.md; the rest of the experiment is then worked on here.
 
 Intent entries normally go through tools/extract_human_messages.py, which uses this
@@ -38,7 +39,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from kitlib import (DOCS, MAIN, REPO, TARGET, checkout_of, current_branch, git,  # noqa: E402
+from kitlib import (CFG, DOCS, MAIN, REPO, TARGET, checkout_of, current_branch, git,  # noqa: E402
                     is_doc, kinds, main_tree_files, with_trailer)
 from sync import sync  # noqa: E402
 
@@ -140,6 +141,19 @@ def commit_files_to_main(files: dict[str, str], message: str) -> str:
     return new
 
 
+def after_main_changed():
+    """Sync this branch with main only if the project asked for it (sync rewrites a linear
+    branch, which a pushed branch or open pull request would then need force-pushed)."""
+    branch = current_branch(REPO)
+    if not branch or branch == TARGET:
+        return
+    if CFG.get("sync_after_to_main"):
+        sync(REPO)
+    else:
+        print(f"{TOOL}: {branch} doesn't have this yet, and doesn't need it to; "
+              f"run tools/sync.py when you want it here")
+
+
 def entry_path(kind: str, eid: str, slug: str) -> str:
     folder, _, _, is_dir = kinds()[kind]
     return f"{folder}/{eid}-{slug}/README.md" if is_dir else f"{folder}/{eid}-{slug}.md"
@@ -157,8 +171,7 @@ def add_entry(kind: str, slug: str, render, subject: str | None = None) -> str:
         msg = (subject or f"Add {eid}: {slug}").replace("{ID}", eid)
         sha = commit_files_to_main({rel: render(eid)}, msg)
     print(f"{TOOL}: committed {rel} to {TARGET} ({sha[:9]})")
-    if current_branch(REPO) != TARGET:
-        sync(REPO)
+    after_main_changed()
     return rel
 
 
@@ -224,7 +237,8 @@ def publish_docs(subject: str | None):
         print(f"{TOOL}: no document changes to copy to {TARGET}")
     for line in copied:
         print(f"{TOOL}: copied to {TARGET}: {line}")
-    sync(REPO)
+    if copied:
+        after_main_changed()
 
 
 def main():

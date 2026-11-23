@@ -116,6 +116,8 @@ class KitTest(unittest.TestCase):
         self.assertTrue((root / "record" / ".git").is_dir())
         self.assertEqual(self.e.git(root, "status", "--porcelain").stdout.strip(), "")
         self.assertEqual(self.e.git(root, "ls-files", "record").stdout.strip(), "")
+        self.assertTrue((root / ".gitattributes").is_file())
+        self.assertIn("/out/", (root / ".gitignore").read_text())
         self.e.tool(root, "kit.py", "check")
 
     def test_hooks_capture_and_trailer(self):
@@ -162,12 +164,14 @@ class KitTest(unittest.TestCase):
             {"type": "queue-operation", "operation": "enqueue", "timestamp": "2026-01-02T00:00:10Z",
              "content": "Queued then delivered."},
             user("Queued then delivered.", "2026-01-02T00:00:11Z"),
+            user("Yes", "2026-01-02T00:00:12Z"),
+            user("Yes, and that too.", "2026-01-02T00:00:13Z"),
         ])
         out = self.e.tool(root, "extract_human_messages.py", SID_A, "--list").stdout
         lines = [ln for ln in out.splitlines() if re.match(r"\s*\d+[ *] \d{4}-", ln)]
         texts = [ln[24:].strip() for ln in lines]
         self.assertEqual(texts, ["First real intent.", "Second, with blocks.", "Typed mid-turn.",
-                                 "Queued then delivered."], out)
+                                 "Queued then delivered.", "Yes", "Yes, and that too."], out)
         self.e.tool(root, "extract_human_messages.py", SID_A, "--slug", "first", "--msg", "1", "3", sid=SID_A)
         self.assertEqual(self.main_files(root, "intent/log"), ["intent/log/I-0001-first.md"])
         body = (root / "intent/log/I-0001-first.md").read_text(encoding="utf-8")
@@ -176,7 +180,12 @@ class KitTest(unittest.TestCase):
         out = self.e.tool(root, "extract_human_messages.py", SID_A, "--list").stdout
         self.assertRegex(out, r"1\* .*First real intent")
         self.assertRegex(out, r"2  .*Second")
-        self.assertIn("2 of 4", out)
+        self.assertIn("2 of 6", out)
+        # "Yes" appears inside no entry as a whole message, though "yes" words may: unmarked
+        self.e.tool(root, "extract_human_messages.py", SID_A, "--slug", "that-too", "--msg", "6")
+        out = self.e.tool(root, "extract_human_messages.py", SID_A, "--list").stdout
+        self.assertRegex(out, r"5  .*Yes")
+        self.assertRegex(out, r"6\* .*Yes, and that too")
 
     def test_worktrees_number_from_main(self):
         root = self.new_project()
@@ -189,7 +198,7 @@ class KitTest(unittest.TestCase):
         self.e.tool(wb, "extract_human_messages.py", SID_B, "--slug", "from-b", "--msg", "1", sid=SID_B)
         self.assertEqual(self.main_files(root, "intent/log"),
                          ["intent/log/I-0001-from-a.md", "intent/log/I-0002-from-b.md"])
-        self.assertTrue((wa / "intent/log/I-0001-from-a.md").is_file())  # synced back into the thread
+        self.assertFalse((wa / "intent/log/I-0001-from-a.md").exists())  # sync is opt-in
         self.assertTrue((root / "intent/log/I-0002-from-b.md").is_file())  # main checkout updated
         msg = self.e.git(root, "log", "-1", "--format=%B", "main").stdout
         self.assertIn(f"Session: {SID_B}", msg)
@@ -232,7 +241,10 @@ class KitTest(unittest.TestCase):
         self.e.transcript(root, SID_A, [user("Intent on a branch.", "2026-01-02T00:00:01Z")])
         self.e.tool(root, "extract_human_messages.py", SID_A, "--slug", "on-branch", "--msg", "1", sid=SID_A)
         self.assertEqual(self.main_files(root, "intent/log"), ["intent/log/I-0001-on-branch.md"])
-        self.assertTrue((root / "intent/log/I-0001-on-branch.md").is_file())  # branch synced
+        self.assertFalse((root / "intent/log/I-0001-on-branch.md").exists())  # sync is opt-in
+        self.assertTrue((root / "wip.txt").is_file())
+        self.e.tool(root, "sync.py")
+        self.assertTrue((root / "intent/log/I-0001-on-branch.md").is_file())  # wip autostashed
         self.assertTrue((root / "wip.txt").is_file())
         self.assertIn(f"Session: {SID_A}", self.e.git(root, "log", "-1", "--format=%B", "main").stdout)
         draft = self.e.tmp / "e.md"
@@ -272,7 +284,11 @@ class KitTest(unittest.TestCase):
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("tools/sync.py", r.stdout + r.stderr)
         self.assertEqual(self.e.git(root, "status", "--porcelain").stdout.strip(), "")  # nothing changed
-        self.e.py(BOOTSTRAP, "init", root, "--name", "Old", "--tools-dir", "tools/kit", "--visibility", "publishable")
+        r = self.e.py(BOOTSTRAP, "init", root, "--name", "Old", "--tools-dir", "tools/kit",
+                      "--visibility", "publishable")
+        self.assertFalse((root / ".gitattributes").exists())
+        self.assertNotIn("/out/", (root / ".gitignore").read_text())
+        self.assertIn("suggest (not done) .gitattributes", r.stdout)
         claude = (root / "CLAUDE.md").read_text(encoding="utf-8")
         self.assertTrue(claude.startswith("# Old project\n\nKeep this."))
         self.assertTrue(claude.endswith("\n@METHOD-RULES.md\n"))
@@ -354,6 +370,16 @@ class KitTest(unittest.TestCase):
         self.assertEqual(self.main_files(root, "intent/log"), ["intent/log/I-0001-what-it-is.md"])
         r = self.e.tool(root, "kit.py", "cite", SID_A, "--msg", "1", "--keys", "nonsense", ok=False)
         self.assertNotEqual(r.returncode, 0)
+
+    def test_sync_after_to_main_opt_in(self):
+        root = self.new_project("proj", "--sync-after-to-main")
+        self.assertTrue(json.loads((root / "intent-kit.json").read_text())["sync_after_to_main"])
+        self.assertIn("Your branch is then synced", (root / "METHOD-RULES.md").read_text(encoding="utf-8"))
+        wa = self.e.tmp / "wt-a"
+        self.e.git(root, "worktree", "add", "-q", wa, "-b", "a")
+        self.e.transcript(wa, SID_A, [user("Intent from A.", "2026-01-02T00:00:01Z")])
+        self.e.tool(wa, "extract_human_messages.py", SID_A, "--slug", "from-a", "--msg", "1")
+        self.assertTrue((wa / "intent/log/I-0001-from-a.md").is_file())
 
 
 if __name__ == "__main__":

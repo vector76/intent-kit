@@ -39,6 +39,7 @@ Where there's a default, say what it is.
 | Stances | wide-search, forward-plausibility, or none | Extra rules: don't narrow the search early; judge plausibility by enabling milestones rather than consensus |
 | Landing | **linear** (rebase and fast-forward, default) or merge | How `land.py` and `sync.py` behave |
 | Push on landing | **yes** (default) or no | Whether `land.py` pushes main to every remote |
+| Sync after `to_main` | **no** (default) or yes | Whether a branch is brought up to date with main right after an entry or document goes to main. Off by default, because syncing rewrites a linear branch, and a pushed branch or open pull request would then need force-pushing. Branches sync at session start instead |
 | Agents | **Claude only** (default) or any | Other agents leave no transcript; the rule says so |
 | Backplane | yes or **no** | Backplane-specific rules; skips its `[Backplane]` reports when extracting intent |
 | Tools folder | **tools** (default) | Use another (`tools/kit`) if `tools/` holds files of the same names |
@@ -54,7 +55,7 @@ Some things are fixed, not choices; say so if they come up:
 ```
 python <kit>/bootstrap.py init <project> --name "..." --summary "..." \
     [--visibility publishable] [--layers research,experiments] [--stances wide-search] \
-    [--landing merge] [--no-push] [--agents any] [--backplane] [--tools-dir tools/kit] --dry-run
+    [--landing merge] [--no-push] [--sync-after-to-main] [--agents any] [--backplane] [--tools-dir tools/kit] --dry-run
 ```
 
 Show the owner the list of what will be added and merged. Then run it again without

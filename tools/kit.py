@@ -143,10 +143,16 @@ def render_rules(cfg: dict) -> str:
         "**Numbered entries go straight to main when they are created**, whatever branch or worktree "
         f"you are in. `extract_human_messages.py` does this for intent; `python {t}/to_main.py <kind> "
         f"--slug <name> --file <draft.md>` does it for {kind_list} (kinds: {', '.join(entry_kinds)}). "
-        "Write the draft outside tracked files (`out/` is ignored) with `{ID}` where the number goes. The "
+        "Write the draft outside tracked files (a temp or scratch folder) with `{ID}` where the number "
+        "goes. The "
         "tool takes the next free number from main under a lock shared by every worktree and commits only "
-        "that file. Never number an entry by hand."
-        + (" For an experiment this creates its folder's README; the work then continues on your branch."
+        "that file. Never number an entry by hand. "
+        + ("Your branch is then synced with main." if cfg.get("sync_after_to_main") else
+           "Your branch doesn't get the entry until it next syncs, and doesn't need it: numbers come "
+           "from main.")
+        + (" For an experiment this creates its folder's README on main; the work then continues on your "
+           "branch" + ("." if cfg.get("sync_after_to_main") else
+                       f" once you've synced it (`python {t}/sync.py`).")
            if "experiments" in layers else ""),
         "**Current-view documents go to main right after you edit them:** `intent/vision.md`, everything "
         f"under `plan/`, `CLAUDE.md`, `{CONFIG_NAME}` and `{RULES_NAME}`. Run `python {t}/to_main.py docs -m \"<what "

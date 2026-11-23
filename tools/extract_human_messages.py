@@ -102,9 +102,30 @@ def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 
-def captured_text() -> str:
-    """All intent entries on main, whitespace-normalized, for the already-captured check."""
-    return "\n".join(_norm(main_file_text(p)) for p in main_tree_files(LOG) if p.endswith(".md"))
+SEPARATOR = "\n\n---\n\n"  # between messages in one entry (see render below)
+
+
+def entry_messages(text: str) -> list[str]:
+    """The verbatim messages in one intent entry: the body after the front matter and the
+    'Verbatim human input' comment, split where render() joined them."""
+    body = text
+    if body.startswith("---"):
+        parts = body.split("\n---\n", 1)  # end of front matter
+        body = parts[1] if len(parts) == 2 else body
+    body = re.sub(r"^\s*<!--.*?-->\s*", "", body, count=1, flags=re.S)
+    return [m for m in body.strip().split(SEPARATOR) if m.strip()]
+
+
+def captured_messages() -> set[str]:
+    """Every message already in an intent entry on main, whitespace-normalized. Matching is by
+    whole message: a short message ("yes") isn't counted as captured just because those
+    words appear inside a longer one. A message that itself contains a line of `---` may fail
+    to match; it then shows as unmarked, which errs on the side of checking it."""
+    out = set()
+    for p in main_tree_files(LOG):
+        if p.endswith(".md"):
+            out.update(_norm(m) for m in entry_messages(main_file_text(p)))
+    return out
 
 
 def cited_messages() -> set[tuple[str, str]]:
@@ -129,10 +150,10 @@ def main():
 
     msgs = human_messages(resolve(a.transcript))
     if a.list or not a.slug:
-        done, cited = captured_text(), cited_messages()
+        done, cited = captured_messages(), cited_messages()
         n_done = n_cited = 0
         for i, (ts, sid, text) in enumerate(msgs, 1):
-            if _norm(text) and _norm(text) in done:
+            if _norm(text) in done:
                 mark = "*"
                 n_done += 1
             elif (sid, ts) in cited:
@@ -169,7 +190,7 @@ def main():
             "<!-- Verbatim human input. Do not edit. Corrections or changes of mind go in a NEW entry. -->",
             "",
         ]
-        body = "\n\n---\n\n".join(text.strip() for _, _, text in chosen)
+        body = SEPARATOR.join(text.strip() for _, _, text in chosen)
         return "\n".join(front) + body + "\n"
 
     from to_main import add_entry  # imported late: it syncs the branch afterwards
