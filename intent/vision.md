@@ -120,6 +120,15 @@ which starts its own record empty. [I-0006]
   doesn't need updating and stays on the older, unattributed style. [I-0013]
 - **Two people with the same name are ignored for now.** [I-0013]
 
+## Answers to the agent's questions
+
+- **An entry includes the agent's questions when they're necessary**, so that an answer
+  can be understood. [I-0014]
+- **It's a judgment call, not a hard rule.** Often much of a reply is intent that makes
+  sense without the questions. Whether to include a question depends on whether the
+  intent makes sense on its own, or whether the question is needed to capture it.
+  [I-0014]
+
 ## Open questions and tensions
 
 - **Which configuration options onboarding should offer.** The owner named the record's
@@ -133,8 +142,3 @@ which starts its own record empty. [I-0006]
 - **Moving the existing projects onto the kit.** Projects already using the earlier
   version of the machinery could be upgraded to it, or left as they are. The owner has
   asked what migrating would gain (I-0008) and hasn't decided.
-- **Whether intent entries that answer the agent's questions should show the
-  questions.** An answer like "1: yes header" (I-0013) only makes sense next to what was
-  asked, and the record holding the question may be on another machine. The agent
-  proposed adding the questions to such entries, as a block marked as the agent's words.
-  The owner hasn't answered.

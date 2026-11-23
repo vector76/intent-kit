@@ -83,6 +83,9 @@ others are added or removed.
 
 - **R-011 (hard).** Project intent and method intent go in one log, with no marks or
   separation. [I-0005]
+- **R-037 (target).** An intent entry that can't be understood without the agent's
+  questions includes them, marked as not intent. One that makes sense on its own doesn't.
+  Which applies is a judgment call each time, not a fixed rule. [I-0014]
 
 ## Authorship
 
