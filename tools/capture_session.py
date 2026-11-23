@@ -12,6 +12,10 @@ Run by hand to sweep up every session of this project, worktree sessions include
 (e.g. if a session ended without firing SessionEnd, or when adopting an existing project):
   python tools/capture_session.py --all [--commit]
 
+Each copied session gets a note of whose it is (<date>_<id>.author): the person this
+clone is set up for (`kit.py whoami`). A session is one person's, so the note is written
+once and never changed. If no one is set up yet, the session start asks the agent to ask.
+
 The record is always its own git repository, ignored by this one. It holds raw
 transcripts: system prompts, file contents, tool output and personal details. If
 record/ is not safely ignored, nothing is copied and the session is warned.
@@ -29,8 +33,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import record_secrets  # noqa: E402
-from kitlib import (CFG, CURRENT, RECORD, SESSIONS, TURNS, find_transcript, git,  # noqa: E402
-                    record_problem, remember_transcript_dir, transcript_dirs)
+from kitlib import (CFG, CURRENT, RECORD, SESSIONS, TURNS, author_file, find_transcript, git,  # noqa: E402
+                    my_name, record_problem, remember_transcript_dir, suggested_name, transcript_dirs)
 
 
 def session_date(transcript: Path) -> str:
@@ -57,6 +61,15 @@ def copy_file(src: Path, dest: Path, targets: set[str]):
     shutil.copy2(src, dest)
 
 
+def note_author(dest: Path):
+    """Write whose session this is, once. Transcripts copied from this machine's Claude folders
+    are the sessions of the person this clone is set up for."""
+    note = author_file(dest)
+    name = my_name()
+    if name and not note.exists():
+        note.write_text(name + "\n", encoding="utf-8", newline="\n")
+
+
 def copy_session(transcript: Path) -> Path | None:
     if not transcript.is_file():
         return None
@@ -64,6 +77,7 @@ def copy_session(transcript: Path) -> Path | None:
     SESSIONS.mkdir(parents=True, exist_ok=True)
     existing = list(SESSIONS.glob(f"*_{sid}.jsonl"))
     dest = existing[0] if existing else SESSIONS / f"{session_date(transcript)}_{sid}.jsonl"
+    note_author(dest)
     targets = record_secrets.hashes(record_secrets.REDACTED)
     src = transcript.stat()
     if dest.exists():
@@ -160,6 +174,13 @@ def main():
             return
         if transcript.is_file():
             remember_transcript_dir(transcript)
+        if not my_name():
+            guess = suggested_name()
+            print("intent-kit: this clone doesn't know who is working in it, so this session and the intent "
+                  "captured from it can't be attributed. Before other work, ask the person \"What shall I call "
+                  "you?\"" + (f", suggesting \"{guess}\"" if guess else "") + ", then run `python "
+                  f"{CFG.get('tools_dir', 'tools')}/kit.py whoami --set \"<name>\"`. Use the name they give, "
+                  "not a guess.")
         # SessionEnd doesn't always fire (apps get closed), so commit whatever earlier
         # sessions left behind each time a new one starts. Otherwise no stdout here.
         sync_all()
@@ -173,7 +194,7 @@ def main():
         print(f"capture_session: not recording: {problem}", file=sys.stderr)
         return
     dest = copy_session(transcript)
-    mine = [dest, dest.with_suffix("")] if dest else None  # this session's files only
+    mine = [dest, dest.with_suffix(""), author_file(dest)] if dest else None  # this session's files only
     if event == "SessionEnd":
         # SessionEnd hooks get little time, so no scan here: the last Stop scanned already
         commit_record(f"session {sid}", mine)

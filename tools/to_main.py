@@ -20,6 +20,10 @@ entry is its folder's README.md; the rest of the experiment is then worked on he
 Intent entries normally go through tools/extract_human_messages.py, which uses this
 module; `intent` here is only for a hand-written neutral entry (see intent/README.md).
 
+Entries say according to whom. A hand-written intent entry without an `author:` line gets
+the name this clone is set up for (`kit.py whoami`). A decision needs `agreed_by:` (who
+agreed to it) and a lesson `found_by:` (who found the problem) in its front matter.
+
 `docs` is for the current-view documents: intent/vision.md, everything under plan/,
 CLAUDE.md and intent-kit.json. Edit them where you are, then run it. On main it just
 commits them. On another branch it commits them there (and nothing else), then copies
@@ -40,7 +44,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from kitlib import (CFG, DOCS, MAIN, REPO, TARGET, checkout_of, current_branch, git,  # noqa: E402
-                    is_doc, kinds, main_tree_files, with_trailer)
+                    is_doc, kinds, main_tree_files, my_name, with_trailer, yaml_str)
 from sync import sync  # noqa: E402
 
 TOOL = "to_main"
@@ -241,6 +245,34 @@ def publish_docs(subject: str | None):
         after_main_changed()
 
 
+ATTRIBUTION = {"decision": ("agreed_by", "who agreed to it"), "lesson": ("found_by", "who found the problem")}
+
+
+def front_matter(text: str) -> str:
+    m = re.match(r"---\n(.*?)\n---\n", text, re.S)
+    return m.group(1) if m else ""
+
+
+def with_attribution(kind: str, draft: str) -> str:
+    """The draft, checked (or, for intent, completed) so it says according to whom."""
+    fm = front_matter(draft)
+    if kind == "intent":
+        if re.search(r"(?m)^author:\s*\S", fm):
+            return draft
+        name = my_name()
+        if not name:
+            fail("an intent entry names its author, and this clone hasn't been told who works in it: ask "
+                 "them what to call them, run tools/kit.py whoami --set \"<name>\", or add author: to the draft")
+        if not fm:
+            fail("an intent entry needs front matter (--- ... ---) with its author:")
+        return re.sub(r"(?m)^(id:.*)$", lambda m: f"{m.group(1)}\nauthor: {yaml_str(name)}", draft, count=1)
+    if kind in ATTRIBUTION:
+        key, what = ATTRIBUTION[kind]
+        if not re.search(rf"(?m)^{key}:\s*\S", fm):
+            fail(f"a {kind} says {what}: add `{key}: [<name>, ...]` to the draft's front matter")
+    return draft
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("kind", choices=["docs", *kinds()])
@@ -255,6 +287,7 @@ def main():
     draft = Path(a.file).read_text(encoding="utf-8")
     if "{ID}" not in draft:
         fail("the draft has no {ID} placeholder")
+    draft = with_attribution(a.kind, draft)
     add_entry(a.kind, a.slug, lambda eid: draft.replace("{ID}", eid), a.message or f"Add {{ID}}: {a.slug}")
 
 

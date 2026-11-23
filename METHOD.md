@@ -67,8 +67,25 @@ so.
 
 When two intent entries conflict, or a request conflicts with the vision, the agent
 doesn't quietly pick a side. The contradiction goes under *Open questions and tensions*
-in the vision and is put to the owner. Contradiction in intent is normal, so it is kept
-in plain view, where it can be decided on purpose.
+in the vision and is put to the people whose intent it is. Contradiction in intent is
+normal, so it is kept in plain view, where it can be decided on purpose.
+
+## According to whom
+
+More than one person may state intent for a project. Most of it agrees or is about
+different things, but every entry still records whose words it is. A contradiction can
+surface long after the words were written, and by then nobody remembers who said what.
+
+Authorship is there so people know whom to talk to, not as proof. Each session belongs to
+one person, who is named once in each clone. The intent captured from a session is that
+person's. The method never records words as someone else's. When someone passes on
+another person's wishes, the entry records both: who said it, and whose wishes they say
+it is. It counts as the speaker's view of what the other person wants until that person
+says it themselves. Agreeing with an entry is a new entry, by the person who agrees.
+
+The projections are written as the consensus and name no one. Where people want
+different things, the vision's open questions say who holds each view, so they can talk
+it through. The agent surfaces the difference and doesn't decide between people.
 
 ## What's known is kept apart from what's wanted
 
@@ -86,7 +103,8 @@ why is this the way it is? Was this mistake made before, and where did it come f
 The chain is:
 - Every commit carries a `Session:` trailer naming the AI session that made it.
 - Every session's raw transcript is kept in the record.
-- Every intent entry names the session and message it was extracted from.
+- Every intent entry names its author and the session and message it was extracted from.
+- Every decision says who agreed to it, and every lesson who found the problem.
 - Every requirement, decision and experiment cites the IDs it rests on.
 
 ## The record is private, and always separate

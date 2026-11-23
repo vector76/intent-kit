@@ -1,7 +1,7 @@
 # Intent
 
-- `log/` holds the owner's own words, verbatim and dated. **Append-only:** entries are
-  never edited. A change of mind is a new entry with `supersedes: [I-xxxx]` in its
+- `log/` holds people's own words, verbatim and dated, each naming its author.
+  **Append-only:** entries are never edited. A change of mind is a new entry with `supersedes: [I-xxxx]` in its
   front matter. When reading the log, a superseded entry is history, not the current view.
 - `vision.md` is the current view, synthesized from the log. It holds no history.
 
@@ -24,6 +24,21 @@ tool takes the next free I- number on main and commits the entry there straight 
 from whatever branch or worktree you are in. One entry can span several messages from
 the same conversation. Not every message is intent ("go ahead", "looks good"), so
 capture the ones that state, refine or change what is wanted.
+
+## According to whom
+
+Each entry's `author:` is the person who typed the words, taken from the session they
+came from: a session is one person's. Each clone is told once who works in it
+(`python tools/kit.py whoami --set "<name>"`). That's for knowing whom to talk to
+when intent conflicts, not proof of identity.
+
+- **Words are never recorded as someone else's.** When someone passes on another
+  person's wishes ("Alice wants X"), capture it with `--on-behalf-of Alice`. The entry
+  stays the speaker's, and it counts as the speaker's view of what Alice wants until
+  Alice says it in their own session.
+- **Agreeing is a new entry**, by the person who agrees.
+- **The vision and requirements are written as the consensus** and name no one. Where
+  people's intent differs, the vision's open questions say who holds each view.
 
 If something is too candid even for this repo, put it in the private record
 (`record/notes/`) and give it an entry with a one-line neutral summary and the record
