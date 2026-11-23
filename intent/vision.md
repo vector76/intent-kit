@@ -24,7 +24,9 @@ imported into them. [I-0001]
 
 It distills the machinery first built for earlier projects (the intent log, the
 requirements, session recording and the scripts behind them), including the
-improvements found while using it. [I-0001]
+improvements found while using it. [I-0001] Improvements go from the kit to projects
+(by upgrading them). A fix found while working in a project doesn't have to be fed back
+into the kit directly. [I-0008]
 
 ## What it contains
 
@@ -37,7 +39,9 @@ which starts its own record empty. [I-0006]
   transcribed prompts, full of speech-to-text slips. The kit has it as a neat document
   that a new project starts from. [I-0001]
 - **Templates and scripts**: the folder structure, starter documents and the Python
-  tools that capture sessions and intent. [I-0001]
+  tools that capture sessions and intent. [I-0001] The intent extractor reads Claude
+  Code's transcript files, whose format isn't documented. That's accepted for now.
+  [I-0008]
 - **Rules linked into `CLAUDE.md`**, not dropped into it. The working rules are a
   generated file the project's `CLAUDE.md` imports, so `CLAUDE.md` stays the project's
   own. [I-0006]
@@ -45,7 +49,9 @@ which starts its own record empty. [I-0006]
   configuration questions, and the answers are recorded so the repository respects them.
   [I-0003] The answers are cited from the configuration, not entered as the project's
   intent: a project's log doesn't open with record-keeping. [I-0006] Setup choices the
-  owner changes later are captured as intent like anything else. [I-0005]
+  owner changes later are captured as intent like anything else. [I-0005] Onboarding
+  checks that Python is available, since the tools need it. It also asks for the
+  record's git remote: an existing one, a new one created then, or none. [I-0008]
 
 ## How it handles parallel work
 
@@ -86,5 +92,5 @@ which starts its own record empty. [I-0006]
   visibility (confidential), landing (linear) and the rest. Whether the kit may ever be
   published is open, as is its name: "intent-kit" is a placeholder.
 - **Moving the existing projects onto the kit.** Projects already using the earlier
-  version of the machinery could be upgraded to it, or left as they are. The owner hasn't
-  said which.
+  version of the machinery could be upgraded to it, or left as they are. The owner has
+  asked what migrating would gain (I-0008) and hasn't decided.

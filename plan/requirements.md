@@ -37,6 +37,10 @@ others are added or removed.
   about is still open (see the vision).
 - **R-014 (hard).** Onboarding answers are cited from the configuration, by session and
   message, and aren't added to the project's intent log. [I-0006]
+- **R-018 (target).** Onboarding checks for a Python that can run the tools before
+  setting anything up, and stops if there isn't one. [I-0008]
+- **R-019 (target).** Onboarding asks for the record's git remote, and allows an existing
+  one, a newly created one, or none. [I-0008]
 
 ## Parallel work
 
