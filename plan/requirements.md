@@ -68,6 +68,16 @@ others are added or removed.
   a problem or prompts to add one. [I-0009]
 - **R-021 (hard).** Record remotes work with any git server, through plain git. The kit
   uses no host-specific tool, `gh` included. [I-0009]
+- **R-022 (target).** When a likely secret reaches the record, the owner is reminded,
+  and keeps being reminded until it's dealt with. [I-0010]
+- **R-023 (target).** On the owner's request, a secret can be removed from the record's
+  files and from all of its history. Nothing is scrubbed without a request. [I-0010]
+- **R-024 (hard).** Sessions sharing a checkout commit their own record files
+  independently, without dropping or absorbing each other's commits. [I-0010]
+- **R-025 (hard).** The commit hook runs on every platform git does: git's copy of it is
+  executable. Derived from R-001: a project must work when cloned elsewhere.
+- **R-026 (expectation).** Pushing the record is manual. The record's size is accepted
+  as it is. [I-0010]
 
 ## The intent log
 

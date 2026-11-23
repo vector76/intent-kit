@@ -77,6 +77,13 @@ which starts its own record empty. [I-0006]
   It's somewhat safer for privacy. [I-0009]
 - **A remote can be on any git server.** It doesn't mean GitHub, and the kit doesn't use
   GitHub's `gh` tool. [I-0009]
+- **Pushing the record is manual**, and that's fine. [I-0010]
+- **Its size is accepted.** Transcripts, subagent transcripts included, make it grow
+  quickly. [I-0010]
+- **If secrets appear in it, the owner is reminded, and its history can be scrubbed on
+  request.** [I-0010]
+- **Sessions sharing a checkout commit to the record independently.** Each has its own
+  session id and its own files there. [I-0010]
 
 ## Intent about the method
 
