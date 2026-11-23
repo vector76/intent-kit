@@ -135,5 +135,11 @@ Some choices belong to the project, and the owner makes them when it's set up:
 - stances some projects want, such as keeping the search space wide open, or judging
   plausibility by what would enable a path rather than by consensus that it failed before
 
-Those answers are the owner's intent like any other: captured verbatim, cited by the
-configuration, and changeable the same way.
+The answers go into the project's configuration, which cites the owner's words in the
+record. They don't open the project's intent log: setting the method up isn't intent
+about the project, and the log starts with what the project is for. When the owner later
+changes one of these choices, that is intent like any other, captured in the log and
+cited by the configuration.
+
+A project gets the method, not anyone's history. Its log, decisions and lessons start
+empty and fill with its own.
