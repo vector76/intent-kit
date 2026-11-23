@@ -11,7 +11,7 @@ human's words; extract them.
   Write an intent entry from one or more messages:
     python tools/extract_human_messages.py <session-id> \
         --slug short-name --msg 4 [5 ...] [--supersedes I-0001] [--tags cost,assembly]
-        [--on-behalf-of NAME]
+        [--on-behalf-of NAME] [--question "<the agent's question, quoted exactly>" ...]
 
 Every entry names its author: the person whose session it is. A session is one person's,
 so the author comes from the record's note of the session (written by the hooks), or, for
@@ -19,6 +19,13 @@ a transcript on this machine, from the name set up in this clone (`kit.py whoami
 when neither is known does --author NAME say whose it is. Words are never recorded as
 someone else's: when the speaker relays another person's wishes ("Alice wants X"),
 --on-behalf-of Alice records that claim, and the entry stays the speaker's.
+
+When a message answers the agent's questions and can't be understood without them
+("1: yes, 2: no"), --question (or --question-file, for long or awkward text) adds the
+questions that are needed, as a block marked as the agent's words and not intent. Each
+must be quoted exactly from the agent's text earlier in the same session; the tool checks.
+It's a judgment call, not a rule: when the words make sense on their own, add no question,
+and quote only the questions the words depend on.
 
 The entry gets the next free I- number on main and is committed straight to main
 (tools/to_main.py), wherever this runs, so two sessions or worktrees capturing at
@@ -111,6 +118,39 @@ def _norm(s: str) -> str:
 
 
 SEPARATOR = "\n\n---\n\n"  # between messages in one entry (see render below)
+# Starts the optional block of the agent's questions, after the human's words.
+CONTEXT_MARK = "<!-- Not intent: "
+CONTEXT_NOTE = (CONTEXT_MARK + "the agent's question(s) these words answer, quoted from the same session so "
+                "the words above can be understood. -->")
+
+
+def agent_messages(path: Path):
+    """Return [(timestamp, text)] for the agent's own text in the main conversation (not subagents')."""
+    out = []
+    with path.open(encoding="utf-8") as f:
+        for line in f:
+            try:
+                d = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if d.get("type") != "assistant" or d.get("isSidechain"):
+                continue
+            content = (d.get("message") or {}).get("content")
+            if isinstance(content, str):
+                text = content
+            elif isinstance(content, list):
+                text = "\n".join(b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text")
+            else:
+                continue
+            if text.strip():
+                out.append((d.get("timestamp", ""), text))
+    return out
+
+
+def quoted_question(q: str, said: list[tuple[str, str]], before: str) -> bool:
+    """True if q is the agent's own words (whitespace aside) from before `before`."""
+    n = _norm(q)
+    return bool(n) and any(n in _norm(text) for ts, text in said if ts < before)
 
 
 def entry_messages(text: str) -> list[str]:
@@ -121,6 +161,7 @@ def entry_messages(text: str) -> list[str]:
         parts = body.split("\n---\n", 1)  # end of front matter
         body = parts[1] if len(parts) == 2 else body
     body = re.sub(r"^\s*<!--.*?-->\s*", "", body, count=1, flags=re.S)
+    body = body.split(CONTEXT_MARK, 1)[0]  # the agent's questions, if any, aren't the human's words
     return [m for m in body.strip().split(SEPARATOR) if m.strip()]
 
 
@@ -157,6 +198,9 @@ def main():
     ap.add_argument("--on-behalf-of", default="", metavar="NAME",
                     help="the speaker is relaying NAME's wishes; the entry stays the speaker's")
     ap.add_argument("--author", default="", help="only when the session's author isn't known")
+    ap.add_argument("--question", action="append", default=[],
+                    help="an agent question the words can't be understood without, quoted exactly")
+    ap.add_argument("--question-file", action="append", default=[], help="the same, read from a file")
     a = ap.parse_args()
 
     path = resolve(a.transcript)
@@ -200,6 +244,13 @@ def main():
     behalf = a.on_behalf_of.strip()
     if behalf == author:
         behalf = ""
+    questions = [q.strip() for q in a.question + [Path(f).read_text(encoding="utf-8") for f in a.question_file]]
+    if questions:
+        said, last = agent_messages(path), max(ts for ts, _, _ in chosen)
+        bad = [q for q in questions if not quoted_question(q, said, last)]
+        if bad:
+            sys.exit("not the agent's words from earlier in this session (quote the question exactly): "
+                     + "; ".join(repr(q[:60]) for q in bad))
 
     def lst(s):
         return "[" + ", ".join(x.strip() for x in s.split(",") if x.strip()) + "]"
@@ -221,6 +272,9 @@ def main():
             "",
         ]
         body = SEPARATOR.join(text.strip() for _, _, text in chosen)
+        if questions:
+            quotes = "\n\n".join("\n".join(("> " + ln).rstrip() for ln in q.splitlines()) for q in questions)
+            body += "\n\n" + CONTEXT_NOTE + "\n\n" + quotes
         return "\n".join(front) + body + "\n"
 
     from to_main import add_entry  # imported late: it syncs the branch afterwards
