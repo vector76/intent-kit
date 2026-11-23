@@ -57,9 +57,9 @@ when intent conflicts, not proof of identity.
   people's intent differs, the vision's open questions say who holds each view.
 
 If something is too candid even for this repo, put it in the private record
-(`record/notes/`) and give it an entry with a one-line neutral summary and the record
+(`{{KIT}}/record/notes/`) and give it an entry with a one-line neutral summary and the record
 path (`python {{TOOLS}}/to_main.py intent --slug ... --file draft.md`), so the trace
 stays intact.
 
-After adding entries, update `vision.md` (and `plan/requirements.md`, if affected) so it
+After adding entries, update `vision.md` (and `{{KIT}}/plan/requirements.md`, if affected) so it
 shows the new current view, and publish it with `python {{TOOLS}}/to_main.py docs -m "..."`.

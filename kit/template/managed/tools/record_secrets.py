@@ -2,12 +2,12 @@
 """Find secrets that have reached the private record, remind the owner, and scrub them
 when the owner asks.
 
-  python tools/record_secrets.py                 list what's been found and not dealt with
-  python tools/record_secrets.py scan [--full]   look again: new transcript text, or all of it
-  python tools/record_secrets.py ignore ID [ID ...]
+  python intent-kit/tools/record_secrets.py                 list what's been found and not dealt with
+  python intent-kit/tools/record_secrets.py scan [--full]   look again: new transcript text, or all of it
+  python intent-kit/tools/record_secrets.py ignore ID [ID ...]
                                                  not a secret (or one the owner accepts): stop
                                                  reminding
-  python tools/record_secrets.py scrub ID [ID ...] [--sources]
+  python intent-kit/tools/record_secrets.py scrub ID [ID ...] [--sources]
                                                  redact them from the record's files and rewrite
                                                  the record's history so no commit holds them;
                                                  --sources also redacts Claude Code's own
@@ -40,7 +40,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from kitlib import RECORD, SESSIONS, git, transcript_dirs  # noqa: E402
+from kitlib import RECORD, SESSIONS, TOOLS_REL, git, transcript_dirs  # noqa: E402
 
 STATE = RECORD / ".git" / "intent-kit-secrets.json"
 REDACTED = RECORD / "redactions.txt"
@@ -188,7 +188,7 @@ def reminder() -> str | None:
     if not n:
         return None
     return (f"intent-kit: the private record holds {n} possible secret(s) that haven't been dealt with. "
-            "Tell the owner. `python tools/record_secrets.py` lists them, masked. Scrub or ignore them only "
+            f"Tell the owner. `python {TOOLS_REL}/record_secrets.py` lists them, masked. Scrub or ignore them only "
             "when the owner asks, and suggest revoking any real one.")
 
 
@@ -364,7 +364,7 @@ def main():
     args = sys.argv[1:]
     cmd = args[0] if args else "list"
     if not (RECORD / ".git").is_dir():
-        sys.exit("record_secrets: record/ isn't set up (python tools/kit.py record)")
+        sys.exit(f"record_secrets: {RECORD} isn't set up (python {TOOLS_REL}/kit.py record)")
     if cmd == "list":
         show()
     elif cmd == "scan":

@@ -35,19 +35,23 @@ config. The project's intent log starts with what you say about the project itse
 ## What a project gets
 
 ```
-CLAUDE.md               the project's own; gains one short section ending in @METHOD-RULES.md
-METHOD-RULES.md         working rules, generated from intent-kit.json (imported by CLAUDE.md)
-METHOD.md               this kit's PHILOSOPHY.md
-intent-kit.json         the project's choices, citing what set them
-intent/log/             people's words, verbatim, append-only, each naming its author (I-0001)
-intent/vision.md        the current view, synthesized from the log
-plan/                   requirements (R-), decisions (D-), lessons (L-), empty to start
-research/ concepts/ experiments/    optional layers (N-, C-, E-)
-tools/                  capture, extract, to_main, sync, land,
-                        kit (check / render / cite / record / whoami / attribute),
-                        record_secrets (flag secrets in the record; scrub on request)
-.githooks/              Session: trailer on every commit
-.claude/settings.json   hooks that copy each session's transcript into record/
-record/                 a separate private git repo, ignored by the project, with its own
-                        private remote if the owner wants one
+CLAUDE.md                  the project's own; gains one short section ending in
+                           @intent-kit/METHOD-RULES.md
+.claude/settings.json      gains hooks that copy each session's transcript into the record
+intent-kit/                everything else the kit adds, in one folder (--kit-dir to rename):
+  README.md                what's in the folder
+  METHOD.md                this kit's PHILOSOPHY.md
+  METHOD-RULES.md          working rules, generated from config.json (imported by CLAUDE.md)
+  config.json              the project's choices, citing what set them
+  intent/log/              people's words, verbatim, append-only, each naming its author (I-0001)
+  intent/vision.md         the current view, synthesized from the log
+  plan/                    requirements (R-), decisions (D-), lessons (L-), empty to start
+  research/ concepts/ experiments/   optional layers (N-, C-, E-)
+  tools/                   capture, extract, to_main, sync, land,
+                           kit (check / render / cite / record / whoami / attribute),
+                           record_secrets (flag secrets in the record; scrub on request)
+  githooks/                Session: trailer on every commit
+  .gitignore .gitattributes  apply only inside the folder
+  record/                  a separate private git repo, ignored, with its own private
+                           remote if the owner wants one
 ```

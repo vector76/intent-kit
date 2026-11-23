@@ -12,13 +12,22 @@ What the project gets is the method, not a history: the tools, the starter docum
 `METHOD.md` (the philosophy) and a generated `METHOD-RULES.md` that its `CLAUDE.md`
 imports. Its intent log, decisions and lessons start empty, and fill with its own.
 
+All of it goes in **one folder**, `intent-kit/` unless the owner picks another name, so
+it never mixes with the project's own files or collides with folders it already has:
+the tools, the commit hook, the config, the intent log, the vision and plan, any optional
+layers and the private record. It has its own `.gitignore` and `.gitattributes`, which
+apply only inside it. Outside it, `CLAUDE.md` gets one import line and
+`.claude/settings.json` gets the capture hooks. A new project also gets a `README.md`.
+
 ## 1. Look before asking
 
 - Is the folder empty, or an existing repository? Is it the main checkout and not a
   worktree (`git rev-parse --git-common-dir`)? Which branch is the main one?
-- Is there already a `CLAUDE.md`, `.claude/settings.json`, `.gitignore`, `tools/` folder,
+- Is there already a `CLAUDE.md`, `.claude/settings.json`, an `intent-kit/` folder,
   `core.hooksPath` or `.git/hooks/prepare-commit-msg`? The bootstrap merges into the
-  first three and stops on the rest. A dry run (step 3) lists what's in the way.
+  first two and stops on the rest. For an `intent-kit/` folder that isn't the kit's, pick
+  another name for the kit's folder (`--kit-dir`). A dry run (step 3) lists what's in
+  the way.
 - Remotes: is any of them public? Does the project use worktrees (`git worktree list`),
   Claude Code's or Backplane's (`.backplane/`)?
 - For an existing project: are there earlier Claude sessions in this folder? They're
@@ -52,7 +61,7 @@ Where there's a default, say what it is.
 | Sync after `to_main` | **no** (default) or yes | Whether a branch is brought up to date with main right after an entry or document goes to main. Off by default, because syncing rewrites a linear branch, and a pushed branch or open pull request would then need force-pushing. Branches sync at session start instead |
 | Agents | **Claude only** (default) or any | Other agents leave no transcript; the rule says so |
 | Backplane | yes or **no** | Backplane-specific rules; skips its `[Backplane]` reports when extracting intent |
-| Tools folder | **tools** (default) | Use another (`tools/kit`) if `tools/` holds files of the same names |
+| Kit folder | **intent-kit** (default) | The one folder everything the kit adds goes in. Use another name if the project already has an `intent-kit/` folder (`--kit-dir`) |
 | Record remote | **local only** (default), an existing private repo, or a new one | Whether the record ever leaves this machine. See below |
 
 **Where the record lives.** Offer all three as equal choices, and don't steer toward a
@@ -66,7 +75,7 @@ remote:
   URL `git` accepts (`ssh://`, `user@host:path`, `https://` or a filesystem path). If
   it's empty, the bootstrap pushes the new record to it. If it already holds this
   project's record (from another machine, say), the bootstrap checks it out into
-  `record/`.
+  `intent-kit/record/`.
 - **A new one.** It must be **private** and empty, so the record can be pushed to it.
   Usually the owner creates it wherever they keep repositories and gives you the URL.
   If they'd like you to create it, and it's a plain git location you can reach, use plain
@@ -86,7 +95,7 @@ they say in this clone's sessions is attributed to that name. It isn't proof of 
 it's there so that, when intent from several people conflicts, they know whom to talk to.
 
 Some things are fixed, not choices; say so if they come up:
-- **The record is always a separate private git repo** (`record/`, ignored by the
+- **The record is always a separate private git repo** (`intent-kit/record/`, ignored by the
   project), whether it stays local or has a remote.
 - **Numbered entries are sequential and committed to main when created.** This works the
   same in worktrees, on branches and in a single checkout.
@@ -96,18 +105,18 @@ Some things are fixed, not choices; say so if they come up:
 ```
 python <kit>/bootstrap.py init <project> --name "..." --summary "..." \
     [--visibility publishable] [--layers research,experiments] [--stances wide-search] \
-    [--landing merge] [--no-push] [--sync-after-to-main] [--agents any] [--backplane] [--tools-dir tools/kit] \
+    [--landing merge] [--no-push] [--sync-after-to-main] [--agents any] [--backplane] [--kit-dir <folder>] \
     [--python python3] [--record-remote <private url>] [--me "<what to call the owner>"] --dry-run
 ```
 
 Show the owner the list of what will be added and merged. It includes the Python
 command the hooks will use and the record's remote. Then run it again without
 `--dry-run`.
-- **New folder:** it runs `git init`, writes everything, creates `record/` as its own
+- **New folder:** it runs `git init`, writes everything, creates `intent-kit/record/` as its own
   repo (connected to its remote, if one was given), sets `core.hooksPath` and commits the
   scaffold on main.
 - **Existing repository:** it writes and merges but doesn't commit. Its `CLAUDE.md` keeps
-  everything it had, plus a short section ending in `@METHOD-RULES.md`. Show
+  everything it had, plus a short section ending in `@intent-kit/METHOD-RULES.md`. Show
   `git status`. With the owner's OK, commit the scaffold on the main branch.
 
 The hooks take effect from the **next** session in this folder. This session's transcript
@@ -119,21 +128,21 @@ Setting the project up isn't intent about the project, so the onboarding answers
 become intent entries. The config cites them instead:
 
 ```
-python tools/capture_session.py --all --commit            # this and any earlier sessions into the record
-python tools/extract_human_messages.py <this session id> --list
-python tools/kit.py cite <this session id> --msg 3 --keys visibility
-python tools/kit.py cite <this session id> --msg 4 5 --keys layers,landing
+python intent-kit/tools/capture_session.py --all --commit            # this and any earlier sessions into the record
+python intent-kit/tools/extract_human_messages.py <this session id> --list
+python intent-kit/tools/kit.py cite <this session id> --msg 3 --keys visibility
+python intent-kit/tools/kit.py cite <this session id> --msg 4 5 --keys layers,landing
 ```
 
 The session id is in the `CLAUDE_CODE_SESSION_ID` environment variable. `cite` records
-each message's session and timestamp under `"sources"` in `intent-kit.json`. Then
+each message's session and timestamp under `"sources"` in `intent-kit/config.json`. Then
 `--list` marks those messages `c`.
 
 The project's intent log starts with **the owner's first words about the project
 itself**. If they've already said what it is in this session, capture those messages:
 
 ```
-python tools/extract_human_messages.py <this session id> --slug first-braindump --msg 6 7
+python intent-kit/tools/extract_human_messages.py <this session id> --slug first-braindump --msg 6 7
 ```
 
 If they haven't, ask for their first braindump and capture it the same way. A message
@@ -142,10 +151,10 @@ its entry id for the setting as well. Re-run `--list` and check that every messa
 marked (`*` or `c`) or isn't intent ("go ahead", "looks good").
 
 Then:
-- Write `intent/vision.md` from the entries, with each point citing its source and any
+- Write `intent-kit/intent/vision.md` from the entries, with each point citing its source and any
   contradictions under *Open questions and tensions*.
-- `python tools/to_main.py docs -m "Vision and config from onboarding"`.
-- `python tools/kit.py check` must pass.
+- `python intent-kit/tools/to_main.py docs -m "Vision and config from onboarding"`.
+- `python intent-kit/tools/kit.py check` must pass.
 
 ## 5. Existing projects: history
 
@@ -157,7 +166,7 @@ Then:
   the owner. If some earlier sessions were someone else's, capture from them with
   `--author "<their name>"`, and only after that person confirms they were theirs.
 - **Intent entries from before authorship** (an older kit, or the earlier machinery) name
-  no author. If the owner says they're all theirs, `python tools/kit.py attribute
+  no author. If the owner says they're all theirs, `python intent-kit/tools/kit.py attribute
   "<name>" --apply` adds an `author:` line to each. It changes no one's words.
 - **Existing documents** (specs, READMEs, issue trackers) aren't intent: they're
   someone's projection of it. The vision can cite them as context. If the owner says "yes,
@@ -168,39 +177,39 @@ Then:
 ## 6. Later
 
 - **Changing a choice.** This is intent, mixed in with everything else the owner says
-  while working: capture it as an entry, as with any intent. Then edit `intent-kit.json`
+  while working: capture it as an entry, as with any intent. Then edit `intent-kit/config.json`
   and add the entry's id under `"sources"`, e.g. `"landing": ["I-0012"]`. Run
-  `tools/kit.py render` and publish with `to_main.py docs`. If a layer is turned on,
+  `intent-kit/tools/kit.py render` and publish with `to_main.py docs`. If a layer is turned on,
   `python <kit>/bootstrap.py upgrade <project> --apply` adds its starter files.
 - **A new kit version.** `python <kit>/bootstrap.py upgrade <project>` shows how the
   managed files (tools, commit hook, METHOD.md) differ, and `--apply` updates them and
-  re-renders `METHOD-RULES.md`. It never touches the project's own content.
+  re-renders `intent-kit/METHOD-RULES.md`. It never touches the project's own content.
 - **A record remote added later**, if the owner decides they want one:
-  `python tools/kit.py record --remote <private url>` connects `record/` to it and
+  `python intent-kit/tools/kit.py record --remote <private url>` connects `intent-kit/record/` to it and
   pushes the record if the remote is empty. After that, push and pull the record like
   any repo (`git -C record push`).
-- **A fresh clone of the project** (another machine, or a re-clone) has no `record/`,
+- **A fresh clone of the project** (another machine, or a re-clone) has no `intent-kit/record/`,
   since it's ignored, and no hooks path. Until both are set up, the hooks record nothing
   and say so at session start. Set the hooks path with
-  `git config core.hooksPath .githooks`. Then set up the record:
-  - If it has a remote, `python tools/kit.py record --remote <url>` checks it out.
-  - If it's local only, `python tools/kit.py record` starts a new local record for this
+  `git config core.hooksPath intent-kit/githooks`. Then set up the record:
+  - If it has a remote, `python intent-kit/tools/kit.py record --remote <url>` checks it out.
+  - If it's local only, `python intent-kit/tools/kit.py record` starts a new local record for this
     machine. A local-only record is one per machine. If an earlier one exists, copying
     it over (any way the owner likes, such as a drive) keeps it whole.
 
-  Then run `tools/kit.py check`.
+  Then run `intent-kit/tools/kit.py check`.
 - **Another person working on the project**, in their own clone. Their first session
   there says the clone doesn't know who works in it. The agent asks what to call them,
-  suggesting Claude Code's account name, and runs `python tools/kit.py whoami --set
+  suggesting Claude Code's account name, and runs `python intent-kit/tools/kit.py whoami --set
   "<name>"`. From then on, their sessions and the intent captured from them are theirs.
   If the record is shared through a remote, each session's note of whose it is
-  (`record/sessions/<date>_<id>.author`) goes with it.
+  (`intent-kit/record/sessions/<date>_<id>.author`) goes with it.
 - **Secrets in the record.** Transcripts keep whatever passed through a session. The
   hooks scan new text for likely secrets (known key formats, private keys, passwords in
   URLs, secret-looking assigned values).
   - The owner sees a warning on the turn a new one appears. Each session start then
     reminds the agent while any are open.
-  - `python tools/record_secrets.py` lists them masked, by ID. `ignore <id>` marks one
+  - `python intent-kit/tools/record_secrets.py` lists them masked, by ID. `ignore <id>` marks one
     as not a secret.
   - `scrub <id> [--sources]` redacts it from the record's files and rewrites the record's
     history so no commit or leftover object holds it. Later copies are then redacted on
@@ -209,5 +218,5 @@ Then:
   - Scrub only when the owner asks. If the record has a remote, the owner force-pushes
     the rewritten history themselves; pushing stays manual. Either way, a real secret
     should also be revoked: scrubbing can't undo where it's already been.
-- **A different Python.** Change `"python"` in `intent-kit.json` and run
-  `tools/kit.py render`, which updates the hooks in `.claude/settings.json` to match.
+- **A different Python.** Change `"python"` in `intent-kit/config.json` and run
+  `intent-kit/tools/kit.py render`, which updates the hooks in `.claude/settings.json` to match.

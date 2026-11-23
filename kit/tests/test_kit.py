@@ -53,7 +53,7 @@ class Env:
     def git(self, cwd, *args, **kw):
         return self.run("git", "-C", cwd, *args, **kw)
 
-    def tool(self, checkout, name, *args, tools="tools", **kw):
+    def tool(self, checkout, name, *args, tools="intent-kit/tools", **kw):
         return self.py(Path(checkout) / tools / name, *args, cwd=checkout, **kw)
 
     def transcript(self, checkout, sid, records):
@@ -93,36 +93,39 @@ class KitTest(unittest.TestCase):
         self.e.py(BOOTSTRAP, "init", root, "--name", "Proj", "--summary", "A test project.", *extra)
         return root
 
-    def main_files(self, root, folder):
-        return self.e.git(root, "ls-tree", "-r", "--name-only", "main", "--", folder).stdout.split()
+    def main_files(self, root, folder, branch="main"):
+        return self.e.git(root, "ls-tree", "-r", "--name-only", branch, "--", folder).stdout.split()
 
     # ---------------------------------------------------------------------------------
 
     def test_new_project(self):
         root = self.new_project("proj", "--layers", "research,experiments", "--stances", "wide-search")
-        for rel in ["CLAUDE.md", "README.md", "METHOD.md", "METHOD-RULES.md", "intent-kit.json",
-                    "intent/vision.md", "plan/requirements.md", "research/README.md", "experiments/README.md",
-                    "tools/to_main.py", ".githooks/prepare-commit-msg", ".claude/settings.json"]:
+        for rel in ["CLAUDE.md", "README.md", ".claude/settings.json"] + [f"intent-kit/{x}" for x in [
+                "README.md", "METHOD.md", "METHOD-RULES.md", "config.json", "intent/vision.md",
+                "plan/requirements.md", "research/README.md", "experiments/README.md", "tools/to_main.py",
+                "githooks/prepare-commit-msg", ".gitignore", ".gitattributes"]]:
             self.assertTrue((root / rel).is_file(), rel)
-        self.assertFalse((root / "concepts").exists())
+        self.assertFalse((root / "intent-kit" / "concepts").exists())
+        # everything is in one folder: the root holds only CLAUDE.md, .claude/ and a new project's README
+        self.assertEqual(sorted(x.name for x in root.iterdir()), [".claude", ".git", "CLAUDE.md", "README.md", "intent-kit"])
+        self.assertEqual(self.e.git(root, "config", "core.hooksPath").stdout.strip(), "intent-kit/githooks")
         # the method ships; the kit's own record doesn't
-        self.assertEqual(self.main_files(root, "intent/log"), [])
-        self.assertEqual(self.main_files(root, "plan/lessons"), ["plan/lessons/README.md"])
-        self.assertEqual(self.main_files(root, "plan/decisions"), ["plan/decisions/README.md"])
-        self.assertEqual((root / "METHOD.md").read_bytes(), (KIT / "PHILOSOPHY.md").read_bytes())
+        self.assertEqual(self.main_files(root, "intent-kit/intent/log"), [])
+        self.assertEqual(self.main_files(root, "intent-kit/plan/lessons"), ["intent-kit/plan/lessons/README.md"])
+        self.assertEqual(self.main_files(root, "intent-kit/plan/decisions"), ["intent-kit/plan/decisions/README.md"])
+        self.assertEqual((root / "intent-kit/METHOD.md").read_bytes(), (KIT / "PHILOSOPHY.md").read_bytes())
         claude = (root / "CLAUDE.md").read_text(encoding="utf-8")
-        self.assertIn("\n@METHOD-RULES.md\n", claude)
+        self.assertIn("\n@intent-kit/METHOD-RULES.md\n", claude)
         self.assertLess(len(claude), 900)
-        rules = (root / "METHOD-RULES.md").read_text(encoding="utf-8")
+        rules = (root / "intent-kit/METHOD-RULES.md").read_text(encoding="utf-8")
         self.assertIn("Experiments close the loop", rules)
         self.assertIn("Don't narrow the search early", rules)
         self.assertNotIn("Judge plausibility", rules)
         self.assertIn("Confidential.", rules)
-        self.assertTrue((root / "record" / ".git").is_dir())
+        self.assertTrue((root / "intent-kit" / "record" / ".git").is_dir())
         self.assertEqual(self.e.git(root, "status", "--porcelain").stdout.strip(), "")
-        self.assertEqual(self.e.git(root, "ls-files", "record").stdout.strip(), "")
-        self.assertTrue((root / ".gitattributes").is_file())
-        self.assertIn("/out/", (root / ".gitignore").read_text())
+        self.assertEqual(self.e.git(root, "ls-files", "intent-kit/record").stdout.strip(), "")
+        self.assertIn("/out/", (root / "intent-kit" / ".gitignore").read_text())
         self.e.tool(root, "kit.py", "check")
 
     def test_hooks_capture_and_trailer(self):
@@ -131,10 +134,10 @@ class KitTest(unittest.TestCase):
         hook = lambda ev: json.dumps({"hook_event_name": ev, "session_id": SID_A, "transcript_path": str(t)})
         r = self.e.tool(root, "capture_session.py", input=hook("SessionStart"))
         self.assertEqual(r.stdout.strip(), "")  # SessionStart stdout goes into the agent's context
-        self.assertEqual((root / ".claude" / "current-session").read_text().strip(), SID_A)
-        copied = root / "record" / "sessions" / f"2026-01-02_{SID_A}.jsonl"
+        self.assertEqual((root / "intent-kit" / ".state" / "current-session").read_text().strip(), SID_A)
+        copied = root / "intent-kit" / "record" / "sessions" / f"2026-01-02_{SID_A}.jsonl"
         self.assertTrue(copied.is_file())
-        log = lambda: self.e.git(root / "record", "log", "--format=%s").stdout
+        log = lambda: self.e.git(root / "intent-kit" / "record", "log", "--format=%s").stdout
         self.assertIn("sync at start", log())
         for _ in range(9):
             self.e.tool(root, "capture_session.py", input=hook("Stop"))
@@ -142,7 +145,7 @@ class KitTest(unittest.TestCase):
         self.e.transcript(root, SID_A, [user("more", "2026-01-02T00:01:00Z")])
         self.e.tool(root, "capture_session.py", input=hook("Stop"))
         self.assertIn("turn 10", log())
-        self.assertIn(mangle(root), (root / "record" / "transcript-dirs.txt").read_text())
+        self.assertIn(mangle(root), (root / "intent-kit" / "record" / "transcript-dirs.txt").read_text())
         (root / "x.txt").write_text("x")
         self.e.git(root, "add", "x.txt")
         self.e.git(root, "commit", "-q", "-m", "x", sid=SID_A)
@@ -178,8 +181,8 @@ class KitTest(unittest.TestCase):
         self.assertEqual(texts, ["First real intent.", "Second, with blocks.", "Typed mid-turn.",
                                  "Queued then delivered.", "Yes", "Yes, and that too."], out)
         self.e.tool(root, "extract_human_messages.py", SID_A, "--slug", "first", "--msg", "1", "3", sid=SID_A)
-        self.assertEqual(self.main_files(root, "intent/log"), ["intent/log/I-0001-first.md"])
-        body = (root / "intent/log/I-0001-first.md").read_text(encoding="utf-8")
+        self.assertEqual(self.main_files(root, "intent-kit/intent/log"), ["intent-kit/intent/log/I-0001-first.md"])
+        body = (root / "intent-kit/intent/log/I-0001-first.md").read_text(encoding="utf-8")
         self.assertIn("First real intent.\n\n---\n\nTyped mid-turn.", body)
         self.assertIn(f"Session: {SID_A}", self.e.git(root, "log", "-1", "--format=%B").stdout)
         out = self.e.tool(root, "extract_human_messages.py", SID_A, "--list").stdout
@@ -201,18 +204,18 @@ class KitTest(unittest.TestCase):
         self.e.transcript(wb, SID_B, [user("Intent from B.", "2026-01-02T00:00:02Z")])
         self.e.tool(wa, "extract_human_messages.py", SID_A, "--slug", "from-a", "--msg", "1", sid=SID_A)
         self.e.tool(wb, "extract_human_messages.py", SID_B, "--slug", "from-b", "--msg", "1", sid=SID_B)
-        self.assertEqual(self.main_files(root, "intent/log"),
-                         ["intent/log/I-0001-from-a.md", "intent/log/I-0002-from-b.md"])
-        self.assertFalse((wa / "intent/log/I-0001-from-a.md").exists())  # sync is opt-in
-        self.assertTrue((root / "intent/log/I-0002-from-b.md").is_file())  # main checkout updated
+        self.assertEqual(self.main_files(root, "intent-kit/intent/log"),
+                         ["intent-kit/intent/log/I-0001-from-a.md", "intent-kit/intent/log/I-0002-from-b.md"])
+        self.assertFalse((wa / "intent-kit/intent/log/I-0001-from-a.md").exists())  # sync is opt-in
+        self.assertTrue((root / "intent-kit/intent/log/I-0002-from-b.md").is_file())  # main checkout updated
         msg = self.e.git(root, "log", "-1", "--format=%B", "main").stdout
         self.assertIn(f"Session: {SID_B}", msg)
         # sweeping finds worktree sessions too
         self.e.tool(root, "capture_session.py", "--all")
-        self.assertEqual(len(list((root / "record" / "sessions").glob("*.jsonl"))), 2)
+        self.assertEqual(len(list((root / "intent-kit" / "record" / "sessions").glob("*.jsonl"))), 2)
 
         # current-view docs: A's edit goes to main; B's conflicting edit is refused
-        v = "intent/vision.md"
+        v = "intent-kit/intent/vision.md"
         text = (wa / v).read_text(encoding="utf-8")
         (wa / v).write_text(text.replace("A test project.", "A test project, as A sees it."), encoding="utf-8")
         self.e.tool(wa, "to_main.py", "docs", "-m", "Vision from A", sid=SID_A)
@@ -229,7 +232,7 @@ class KitTest(unittest.TestCase):
         draft = self.e.tmp / "d.md"
         draft.write_text("---\nid: {ID}\nagreed_by: [Test Person]\n---\n# Use X\n", encoding="utf-8")
         self.e.tool(wa, "to_main.py", "decision", "--slug", "use-x", "--file", draft)
-        self.assertIn("plan/decisions/D-0001-use-x.md", self.main_files(root, "plan/decisions"))
+        self.assertIn("intent-kit/plan/decisions/D-0001-use-x.md", self.main_files(root, "intent-kit/plan/decisions"))
 
         # code lands linearly
         (wa / "code.txt").write_text("code\n")
@@ -245,17 +248,17 @@ class KitTest(unittest.TestCase):
         (root / "wip.txt").write_text("wip")  # uncommitted work survives (autostash)
         self.e.transcript(root, SID_A, [user("Intent on a branch.", "2026-01-02T00:00:01Z")])
         self.e.tool(root, "extract_human_messages.py", SID_A, "--slug", "on-branch", "--msg", "1", sid=SID_A)
-        self.assertEqual(self.main_files(root, "intent/log"), ["intent/log/I-0001-on-branch.md"])
-        self.assertFalse((root / "intent/log/I-0001-on-branch.md").exists())  # sync is opt-in
+        self.assertEqual(self.main_files(root, "intent-kit/intent/log"), ["intent-kit/intent/log/I-0001-on-branch.md"])
+        self.assertFalse((root / "intent-kit/intent/log/I-0001-on-branch.md").exists())  # sync is opt-in
         self.assertTrue((root / "wip.txt").is_file())
         self.e.tool(root, "sync.py")
-        self.assertTrue((root / "intent/log/I-0001-on-branch.md").is_file())  # wip autostashed
+        self.assertTrue((root / "intent-kit/intent/log/I-0001-on-branch.md").is_file())  # wip autostashed
         self.assertTrue((root / "wip.txt").is_file())
         self.assertIn(f"Session: {SID_A}", self.e.git(root, "log", "-1", "--format=%B", "main").stdout)
         draft = self.e.tmp / "e.md"
         draft.write_text("---\nid: {ID}\n---\n# Does it work?\n", encoding="utf-8")
         self.e.tool(root, "to_main.py", "experiment", "--slug", "does-it", "--file", draft)
-        self.assertIn("experiments/E-0001-does-it/README.md", self.main_files(root, "experiments"))
+        self.assertIn("intent-kit/experiments/E-0001-does-it/README.md", self.main_files(root, "intent-kit/experiments"))
 
     def test_merge_landing(self):
         root = self.new_project("proj", "--landing", "merge")
@@ -281,41 +284,57 @@ class KitTest(unittest.TestCase):
         (root / ".claude" / "settings.json").write_text(json.dumps(
             {"permissions": {"allow": ["Bash(ls)"]},
              "hooks": {"Stop": [{"hooks": [{"type": "command", "command": "echo hi"}]}]}}), encoding="utf-8")
-        (root / "tools").mkdir()
-        (root / "tools" / "sync.py").write_text("# someone else's sync\n", encoding="utf-8")
+        for folder in ("tools", "intent", "plan"):  # the project's own folders of these names are left alone
+            (root / folder).mkdir()
+            (root / folder / "theirs.txt").write_text("someone else's\n", encoding="utf-8")
+        (root / "intent-kit").mkdir()
+        (root / "intent-kit" / "notes.txt").write_text("a folder that isn't the kit's\n", encoding="utf-8")
         self.e.git(root, "add", "-A")
         self.e.git(root, "commit", "-q", "-m", "old")
         r = self.e.py(BOOTSTRAP, "init", root, "--name", "Old", ok=False)
         self.assertNotEqual(r.returncode, 0)
-        self.assertIn("tools/sync.py", r.stdout + r.stderr)
+        self.assertIn("--kit-dir", r.stdout + r.stderr)
         self.assertEqual(self.e.git(root, "status", "--porcelain").stdout.strip(), "")  # nothing changed
-        r = self.e.py(BOOTSTRAP, "init", root, "--name", "Old", "--tools-dir", "tools/kit",
-                      "--visibility", "publishable")
+        self.e.py(BOOTSTRAP, "init", root, "--name", "Old", "--kit-dir", "kitstuff", "--visibility", "publishable")
+        # outside its folder, the kit touched only CLAUDE.md and .claude/settings.json
+        changed = sorted(ln[3:] for ln in self.e.git(root, "status", "--porcelain", "-uall").stdout.splitlines())
+        self.assertEqual([c for c in changed if not c.startswith("kitstuff/")], [".claude/settings.json", "CLAUDE.md"])
+        self.assertEqual((root / ".gitignore").read_text(encoding="utf-8"), "node_modules/\n")
         self.assertFalse((root / ".gitattributes").exists())
-        self.assertNotIn("/out/", (root / ".gitignore").read_text())
-        self.assertIn("suggest (not done) .gitattributes", r.stdout)
+        self.assertFalse((root / "README.md").exists())
+        for folder in ("tools", "intent", "plan"):
+            self.assertEqual(sorted(x.name for x in (root / folder).iterdir()), ["theirs.txt"])
         claude = (root / "CLAUDE.md").read_text(encoding="utf-8")
         self.assertTrue(claude.startswith("# Old project\n\nKeep this."))
-        self.assertTrue(claude.endswith("\n@METHOD-RULES.md\n"))
-        rules = (root / "METHOD-RULES.md").read_text(encoding="utf-8")
-        self.assertIn("python tools/kit/to_main.py docs", rules)
+        self.assertTrue(claude.endswith("\n@kitstuff/METHOD-RULES.md\n"))
+        rules = (root / "kitstuff/METHOD-RULES.md").read_text(encoding="utf-8")
+        self.assertIn("python kitstuff/tools/to_main.py docs", rules)
+        self.assertIn("`kitstuff/intent/vision.md`", rules)
+        self.assertNotRegex(rules, r"`(intent|plan|record)/")
         self.assertIn("Publishable.", rules)
         s = json.loads((root / ".claude" / "settings.json").read_text(encoding="utf-8"))
         self.assertEqual(s["permissions"], {"allow": ["Bash(ls)"]})
         self.assertEqual(len(s["hooks"]["Stop"]), 2)
-        self.assertIn("node_modules/", (root / ".gitignore").read_text(encoding="utf-8"))
-        self.assertEqual(json.loads((root / "intent-kit.json").read_text())["main_branch"], "trunk")
+        self.assertIn("kitstuff/tools/capture_session.py", s["hooks"]["Stop"][1]["hooks"][0]["command"])
+        self.assertEqual(json.loads((root / "kitstuff/config.json").read_text())["main_branch"], "trunk")
+        self.assertEqual(self.e.git(root, "config", "core.hooksPath").stdout.strip(), "kitstuff/githooks")
         self.e.git(root, "add", "-A")
         self.e.git(root, "commit", "-q", "-m", "adopt intent-kit")
-        self.e.py(root / "tools/kit/kit.py", "check", cwd=root)
-        self.e.transcript(root, SID_A, [user("Old project's new intent.", "2026-01-02T00:00:01Z")])
-        self.e.py(root / "tools/kit/extract_human_messages.py", SID_A, "--slug", "first", "--msg", "1", cwd=root)
-        self.assertEqual(self.e.git(root, "ls-tree", "-r", "--name-only", "trunk", "--", "intent/log").stdout.split(),
-                         ["intent/log/I-0001-first.md"])
+        self.e.tool(root, "kit.py", "check", tools="kitstuff/tools")
+        t = self.e.transcript(root, SID_A, [user("Old project's new intent.", "2026-01-02T00:00:01Z")])
+        self.e.tool(root, "capture_session.py", tools="kitstuff/tools", input=json.dumps(
+            {"hook_event_name": "SessionStart", "session_id": SID_A, "transcript_path": str(t)}))
+        self.assertTrue((root / "kitstuff/record/sessions" / f"2026-01-02_{SID_A}.jsonl").is_file())
+        self.e.tool(root, "extract_human_messages.py", SID_A, "--slug", "first", "--msg", "1",
+                    tools="kitstuff/tools", sid=SID_A)
+        self.assertEqual(self.main_files(root, "kitstuff/intent/log", "trunk"), ["kitstuff/intent/log/I-0001-first.md"])
+        self.assertIn(f"Session: {SID_A}", self.e.git(root, "log", "-1", "--format=%B", "trunk").stdout)
+        self.assertEqual(self.e.git(root, "status", "--porcelain").stdout.strip(), "")  # record and state ignored
+        self.assertIn("up to date", self.e.py(BOOTSTRAP, "upgrade", root).stdout)  # finds kitstuff/ itself
 
     def test_record_safety(self):
         root = self.new_project()
-        gi = root / ".gitignore"
+        gi = root / "intent-kit" / ".gitignore"
         gi.write_text(gi.read_text().replace("/record/\n", ""), encoding="utf-8")
         r = self.e.tool(root, "kit.py", "check", ok=False)
         self.assertNotEqual(r.returncode, 0)
@@ -324,23 +343,23 @@ class KitTest(unittest.TestCase):
         r = self.e.tool(root, "capture_session.py", input=json.dumps(
             {"hook_event_name": "SessionStart", "session_id": SID_A, "transcript_path": str(t)}))
         self.assertIn("NOT being recorded", r.stdout)
-        self.assertEqual(list((root / "record" / "sessions").glob("*.jsonl")), [])
+        self.assertEqual(list((root / "intent-kit" / "record" / "sessions").glob("*.jsonl")), [])
 
     def test_upgrade(self):
         root = self.new_project()
-        (root / "tools" / "sync.py").write_text("# drifted\n", encoding="utf-8")
-        cfg = json.loads((root / "intent-kit.json").read_text())
+        (root / "intent-kit" / "tools" / "sync.py").write_text("# drifted\n", encoding="utf-8")
+        cfg = json.loads((root / "intent-kit/config.json").read_text())
         cfg["layers"] = ["concepts"]
-        (root / "intent-kit.json").write_text(json.dumps(cfg), encoding="utf-8")
+        (root / "intent-kit/config.json").write_text(json.dumps(cfg), encoding="utf-8")
         r = self.e.py(BOOTSTRAP, "upgrade", root)
-        self.assertIn("tools/sync.py", r.stdout)
-        self.assertIn("concepts/README.md", r.stdout)
-        self.assertEqual((root / "tools" / "sync.py").read_text(), "# drifted\n")
+        self.assertIn("intent-kit/tools/sync.py", r.stdout)
+        self.assertIn("intent-kit/concepts/README.md", r.stdout)
+        self.assertEqual((root / "intent-kit" / "tools" / "sync.py").read_text(), "# drifted\n")
         self.e.py(BOOTSTRAP, "upgrade", root, "--apply")
-        self.assertEqual((root / "tools" / "sync.py").read_bytes(),
+        self.assertEqual((root / "intent-kit" / "tools" / "sync.py").read_bytes(),
                          (KIT / "template/managed/tools/sync.py").read_bytes())
-        self.assertTrue((root / "concepts" / "README.md").is_file())
-        self.assertIn("C-0001", (root / "METHOD-RULES.md").read_text(encoding="utf-8"))
+        self.assertTrue((root / "intent-kit" / "concepts" / "README.md").is_file())
+        self.assertIn("C-0001", (root / "intent-kit/METHOD-RULES.md").read_text(encoding="utf-8"))
         self.assertIn("up to date", self.e.py(BOOTSTRAP, "upgrade", root).stdout)
 
     def test_upgrade_moves_inlined_rules_out(self):
@@ -354,7 +373,7 @@ class KitTest(unittest.TestCase):
         self.assertNotIn("old generated text", claude)
         self.assertIn("Own rules.", claude)
         self.assertIn("Keep me too.", claude)
-        self.assertEqual(claude.count("@METHOD-RULES.md"), 1)
+        self.assertEqual(claude.count("@intent-kit/METHOD-RULES.md"), 1)
         self.e.tool(root, "kit.py", "render")  # idempotent
         self.assertEqual((root / "CLAUDE.md").read_text(encoding="utf-8"), claude)
 
@@ -365,26 +384,26 @@ class KitTest(unittest.TestCase):
             user("It's a tool for sorting seeds.", "2026-01-02T00:00:02Z"),
         ])
         self.e.tool(root, "kit.py", "cite", SID_A, "--msg", "1", "--keys", "visibility")
-        src = json.loads((root / "intent-kit.json").read_text())["sources"]
+        src = json.loads((root / "intent-kit/config.json").read_text())["sources"]
         self.assertEqual(src, {"visibility": [{"session": SID_A, "message": "2026-01-02T00:00:01Z"}]})
         self.e.tool(root, "to_main.py", "docs", "-m", "Cite onboarding")
         self.e.tool(root, "extract_human_messages.py", SID_A, "--slug", "what-it-is", "--msg", "2")
         out = self.e.tool(root, "extract_human_messages.py", SID_A, "--list").stdout
         self.assertRegex(out, r"1c .*confidential")
         self.assertRegex(out, r"2\* .*sorting seeds")
-        self.assertEqual(self.main_files(root, "intent/log"), ["intent/log/I-0001-what-it-is.md"])
+        self.assertEqual(self.main_files(root, "intent-kit/intent/log"), ["intent-kit/intent/log/I-0001-what-it-is.md"])
         r = self.e.tool(root, "kit.py", "cite", SID_A, "--msg", "1", "--keys", "nonsense", ok=False)
         self.assertNotEqual(r.returncode, 0)
 
     def test_sync_after_to_main_opt_in(self):
         root = self.new_project("proj", "--sync-after-to-main")
-        self.assertTrue(json.loads((root / "intent-kit.json").read_text())["sync_after_to_main"])
-        self.assertIn("Your branch is then synced", (root / "METHOD-RULES.md").read_text(encoding="utf-8"))
+        self.assertTrue(json.loads((root / "intent-kit/config.json").read_text())["sync_after_to_main"])
+        self.assertIn("Your branch is then synced", (root / "intent-kit/METHOD-RULES.md").read_text(encoding="utf-8"))
         wa = self.e.tmp / "wt-a"
         self.e.git(root, "worktree", "add", "-q", wa, "-b", "a")
         self.e.transcript(wa, SID_A, [user("Intent from A.", "2026-01-02T00:00:01Z")])
         self.e.tool(wa, "extract_human_messages.py", SID_A, "--slug", "from-a", "--msg", "1")
-        self.assertTrue((wa / "intent/log/I-0001-from-a.md").is_file())
+        self.assertTrue((wa / "intent-kit/intent/log/I-0001-from-a.md").is_file())
 
     def test_python_command(self):
         bad = self.e.tmp / "bad"
@@ -393,16 +412,16 @@ class KitTest(unittest.TestCase):
         self.assertIn("doesn't run here", r.stdout + r.stderr)
         self.assertFalse(bad.exists())  # nothing written
         root = self.new_project()  # detected
-        self.assertIn(json.loads((root / "intent-kit.json").read_text())["python"], ("python3", "python", "py -3"))
+        self.assertIn(json.loads((root / "intent-kit/config.json").read_text())["python"], ("python3", "python", "py -3"))
         root = self.new_project("proj2", "--python", sys.executable)
-        cfg = json.loads((root / "intent-kit.json").read_text())
+        cfg = json.loads((root / "intent-kit/config.json").read_text())
         self.assertEqual(cfg["python"], sys.executable)
         cmds = [h["command"] for g in json.loads((root / ".claude/settings.json").read_text())["hooks"]["Stop"]
                 for h in g["hooks"]]
         self.assertTrue(any(c.startswith(sys.executable) or c.startswith(f'"{sys.executable}"') for c in cmds))
-        self.assertIn(f"{sys.executable} tools/to_main.py", (root / "METHOD-RULES.md").read_text(encoding="utf-8"))
+        self.assertIn(f"{sys.executable} intent-kit/tools/to_main.py", (root / "intent-kit/METHOD-RULES.md").read_text(encoding="utf-8"))
         cfg["python"] = "no-such-python-here"
-        (root / "intent-kit.json").write_text(json.dumps(cfg), encoding="utf-8")
+        (root / "intent-kit/config.json").write_text(json.dumps(cfg), encoding="utf-8")
         self.e.tool(root, "kit.py", "render")
         r = self.e.tool(root, "kit.py", "check", ok=False)
         self.assertIn("doesn't run here", r.stdout)
@@ -419,35 +438,35 @@ class KitTest(unittest.TestCase):
         self.assertFalse((self.e.tmp / "nope").exists())
         root = self.new_project("proj", "--record-remote", bare)
         self.assertIn("README.md", self.e.git(bare, "ls-tree", "--name-only", "main").stdout)  # pushed
-        self.assertEqual(self.e.git(root / "record", "rev-parse", "--abbrev-ref", "@{u}").stdout.strip(), "origin/main")
+        self.assertEqual(self.e.git(root / "intent-kit" / "record", "rev-parse", "--abbrev-ref", "@{u}").stdout.strip(), "origin/main")
         t = self.e.transcript(root, SID_A, [user("hello", "2026-01-02T00:00:00Z")])
         self.e.tool(root, "capture_session.py", input=json.dumps(
             {"hook_event_name": "SessionEnd", "session_id": SID_A, "transcript_path": str(t)}))
-        self.e.git(root / "record", "push", "-q")
+        self.e.git(root / "intent-kit" / "record", "push", "-q")
         self.e.tool(root, "kit.py", "check")
 
         # a fresh clone of the project has no record/ until it's set up
         clone = self.e.tmp / "clone"
         self.e.git(self.e.tmp, "clone", "-q", root, clone)
-        self.e.git(clone, "config", "core.hooksPath", ".githooks")
+        self.e.git(clone, "config", "core.hooksPath", "intent-kit/githooks")
         r = self.e.tool(clone, "kit.py", "check", ok=False)
         self.assertIn("record/ is not set up", r.stdout)
         t2 = self.e.transcript(clone, SID_B, [user("hi", "2026-01-03T00:00:00Z")])
         r = self.e.tool(clone, "capture_session.py", input=json.dumps(
             {"hook_event_name": "SessionStart", "session_id": SID_B, "transcript_path": str(t2)}))
         self.assertIn("NOT being recorded", r.stdout)
-        self.assertFalse((clone / "record").exists())
+        self.assertFalse((clone / "intent-kit" / "record").exists())
         self.e.tool(clone, "kit.py", "record", "--remote", bare)
-        self.assertTrue((clone / "record" / "sessions" / f"2026-01-02_{SID_A}.jsonl").is_file())  # checked out
+        self.assertTrue((clone / "intent-kit" / "record" / "sessions" / f"2026-01-02_{SID_A}.jsonl").is_file())  # checked out
         self.e.tool(clone, "kit.py", "check")
 
         # local only is a full choice: no remote, and check doesn't nag about it
         solo = self.new_project("solo")
-        self.assertEqual(self.e.git(solo / "record", "remote").stdout.strip(), "")
+        self.assertEqual(self.e.git(solo / "intent-kit" / "record", "remote").stdout.strip(), "")
         self.assertNotIn("remote", self.e.tool(solo, "kit.py", "check").stdout)
         solo_clone = self.e.tmp / "solo-clone"  # a local-only record starts afresh on a new clone
         self.e.git(self.e.tmp, "clone", "-q", solo, solo_clone)
-        self.e.git(solo_clone, "config", "core.hooksPath", ".githooks")
+        self.e.git(solo_clone, "config", "core.hooksPath", "intent-kit/githooks")
         self.e.tool(solo_clone, "kit.py", "record")
         self.e.tool(solo_clone, "kit.py", "check")
         # and a remote can still be added later; an empty one gets the record pushed to it
@@ -457,7 +476,7 @@ class KitTest(unittest.TestCase):
         self.assertIn("README.md", self.e.git(bare2, "ls-tree", "--name-only", "main").stdout)
 
     def test_hook_is_executable_in_git(self):
-        hook = ".githooks/prepare-commit-msg"
+        hook = "intent-kit/githooks/prepare-commit-msg"
         mode = lambda r: self.e.git(r, "ls-files", "-s", "--", hook).stdout.split()[0]
         root = self.new_project()
         self.assertEqual(mode(root), "100755")
@@ -482,7 +501,7 @@ class KitTest(unittest.TestCase):
         hook = lambda sid, t, ev: json.dumps({"hook_event_name": ev, "session_id": sid, "transcript_path": str(t)})
         self.e.tool(root, "capture_session.py", input=hook(SID_B, tb, "Stop"))  # b copied, not committed
         self.e.tool(root, "capture_session.py", input=hook(SID_A, ta, "SessionEnd"))
-        rec = root / "record"
+        rec = root / "intent-kit" / "record"
         files = self.e.git(rec, "show", "--name-only", "--format=", "HEAD").stdout.split()
         self.assertEqual(files, [f"sessions/2026-01-02_{SID_A}.author", f"sessions/2026-01-02_{SID_A}.jsonl"])
         self.assertIn(SID_B, self.e.git(rec, "status", "--porcelain").stdout)  # left for b's own commit
@@ -490,7 +509,7 @@ class KitTest(unittest.TestCase):
         lock = rec / ".git" / "index.lock"
         lock.write_text("")
         env = dict(self.e.env)
-        p = subprocess.Popen([sys.executable, str(root / "tools" / "capture_session.py")], cwd=root, env=env,
+        p = subprocess.Popen([sys.executable, str(root / "intent-kit" / "tools" / "capture_session.py")], cwd=root, env=env,
                              stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         import time
         time.sleep(1.0)
@@ -503,7 +522,7 @@ class KitTest(unittest.TestCase):
         aws = "AKIA" + "QX7Z" * 4            # built here so no key-shaped text sits in this file
         tok = "ghp_" + "a1B2" * 9
         root = self.new_project()
-        rec = root / "record"
+        rec = root / "intent-kit" / "record"
         ta = self.e.transcript(root, SID_A, [user(f"key {aws} and {tok}", "2026-01-02T00:00:00Z")])
         hook = lambda sid, t, ev: json.dumps({"hook_event_name": ev, "session_id": sid, "transcript_path": str(t)})
         r = self.e.tool(root, "capture_session.py", input=hook(SID_A, ta, "Stop"))
@@ -539,22 +558,22 @@ class KitTest(unittest.TestCase):
     def test_authorship(self):
         root = self.new_project()
         self.assertIn("Test Person", self.e.tool(root, "kit.py", "whoami").stdout)  # from git's user.name
-        rec = root / "record" / "sessions"
+        rec = root / "intent-kit" / "record" / "sessions"
         t = self.e.transcript(root, SID_A, [user("Make it blue.", "2026-01-02T00:00:01Z"),
                                             user("Alice wants it round.", "2026-01-02T00:00:02Z")])
         hook = lambda ev, sid, tp: json.dumps({"hook_event_name": ev, "session_id": sid, "transcript_path": str(tp)})
         r = self.e.tool(root, "capture_session.py", input=hook("SessionStart", SID_A, t))
         self.assertEqual(r.stdout.strip(), "")
         self.assertEqual((rec / f"2026-01-02_{SID_A}.author").read_text().strip(), "Test Person")
-        self.assertIn(f"2026-01-02_{SID_A}.author", self.e.git(root / "record", "ls-files").stdout)
+        self.assertIn(f"2026-01-02_{SID_A}.author", self.e.git(root / "intent-kit" / "record", "ls-files").stdout)
 
         self.e.tool(root, "extract_human_messages.py", SID_A, "--slug", "blue", "--msg", "1")
-        blue = (root / "intent/log/I-0001-blue.md").read_text(encoding="utf-8")
+        blue = (root / "intent-kit/intent/log/I-0001-blue.md").read_text(encoding="utf-8")
         self.assertIn("\nauthor: Test Person\n", blue)
         self.assertNotIn("on_behalf_of", blue)
         self.e.tool(root, "extract_human_messages.py", SID_A, "--slug", "round", "--msg", "2",
                     "--on-behalf-of", "Alice")
-        rnd = (root / "intent/log/I-0002-round.md").read_text(encoding="utf-8")
+        rnd = (root / "intent-kit/intent/log/I-0002-round.md").read_text(encoding="utf-8")
         self.assertIn("\nauthor: Test Person\non_behalf_of: Alice\n", rnd)
         # words are never recorded as someone else's
         r = self.e.tool(root, "extract_human_messages.py", SID_A, "--slug", "x", "--msg", "2",
@@ -583,7 +602,7 @@ class KitTest(unittest.TestCase):
         # the session's own note wins over the clone's name, which is now someone else's
         self.assertEqual((rec / f"2026-01-02_{SID_A}.author").read_text().strip(), "Test Person")
         self.e.tool(root, "extract_human_messages.py", SID_B, "--slug", "fast", "--msg", "1")
-        self.assertIn("\nauthor: Dana Q\n", (root / "intent/log/I-0003-fast.md").read_text(encoding="utf-8"))
+        self.assertIn("\nauthor: Dana Q\n", (root / "intent-kit/intent/log/I-0003-fast.md").read_text(encoding="utf-8"))
 
         # a transcript known only from the record, with no note: whose it is must be given
         sid_c = "cccccccc-1111-2222-3333-444444444444"
@@ -592,7 +611,7 @@ class KitTest(unittest.TestCase):
         r = self.e.tool(root, "extract_human_messages.py", sid_c, "--slug", "cheap", "--msg", "1", ok=False)
         self.assertIn("--author", r.stderr)
         self.e.tool(root, "extract_human_messages.py", sid_c, "--slug", "cheap", "--msg", "1", "--author", "Erin")
-        self.assertIn("\nauthor: Erin\n", (root / "intent/log/I-0004-cheap.md").read_text(encoding="utf-8"))
+        self.assertIn("\nauthor: Erin\n", (root / "intent-kit/intent/log/I-0004-cheap.md").read_text(encoding="utf-8"))
 
         # decisions say who agreed, lessons who found the problem; a hand-written intent entry gets its author
         draft = self.e.tmp / "d.md"
@@ -600,12 +619,12 @@ class KitTest(unittest.TestCase):
         for kind, key in (("decision", "agreed_by"), ("lesson", "found_by")):
             r = self.e.tool(root, "to_main.py", kind, "--slug", "x", "--file", draft, ok=False)
             self.assertIn(key, r.stderr + r.stdout)
-        self.assertEqual(self.main_files(root, "plan/decisions"), ["plan/decisions/README.md"])
+        self.assertEqual(self.main_files(root, "intent-kit/plan/decisions"), ["intent-kit/plan/decisions/README.md"])
         self.e.tool(root, "to_main.py", "intent", "--slug", "pointer", "--file", draft)
-        self.assertIn("id: I-0005\nauthor: Dana Q\n", (root / "intent/log/I-0005-pointer.md").read_text(encoding="utf-8"))
+        self.assertIn("id: I-0005\nauthor: Dana Q\n", (root / "intent-kit/intent/log/I-0005-pointer.md").read_text(encoding="utf-8"))
 
         # entries from before authorship: attributed only on request, words unchanged
-        old = root / "intent/log/I-0006-old.md"
+        old = root / "intent-kit/intent/log/I-0006-old.md"
         old.write_text("---\nid: I-0006\ndate: 2025-01-01\ncaptured_from: session x\ntags: []\n---\n\n"
                        "Old words.\n", encoding="utf-8")
         self.e.git(root, "add", old)
@@ -619,7 +638,7 @@ class KitTest(unittest.TestCase):
                          "tags: []\n---\n\nOld words.\n")
         self.assertIn(f"Session: {SID_B}", self.e.git(root, "log", "-1", "--format=%B").stdout)
         self.assertNotIn("names no author", self.e.tool(root, "kit.py", "check").stdout)
-        rules = (root / "METHOD-RULES.md").read_text(encoding="utf-8")
+        rules = (root / "intent-kit/METHOD-RULES.md").read_text(encoding="utf-8")
         self.assertIn("Every entry says according to whom", rules)
         self.assertIn("never decide between people", rules)
 
@@ -638,7 +657,7 @@ class KitTest(unittest.TestCase):
         qf.write_text(q2, encoding="utf-8")
         self.e.tool(root, "extract_human_messages.py", SID_A, "--slug", "header", "--msg", "2",
                     "--question", q1, "--question-file", qf)
-        body = (root / "intent/log/I-0001-header.md").read_text(encoding="utf-8")
+        body = (root / "intent-kit/intent/log/I-0001-header.md").read_text(encoding="utf-8")
         self.assertIn("1: blue 2: new\n\n<!-- Not intent: the agent's question(s)", body)
         self.assertIn("> 1. Should the header be blue or red?\n\n> 2. Keep the old logo,\n>    or draw a new one?\n",
                       body)
@@ -649,8 +668,8 @@ class KitTest(unittest.TestCase):
             r = self.e.tool(root, "extract_human_messages.py", SID_A, "--slug", "x", "--msg", "2",
                             "--question", q, ok=False)
             self.assertIn("not the agent's words", r.stderr, q)
-        self.assertEqual(self.main_files(root, "intent/log"), ["intent/log/I-0001-header.md"])
-        self.assertIn("--question", (root / "METHOD-RULES.md").read_text(encoding="utf-8"))
+        self.assertEqual(self.main_files(root, "intent-kit/intent/log"), ["intent-kit/intent/log/I-0001-header.md"])
+        self.assertIn("--question", (root / "intent-kit/METHOD-RULES.md").read_text(encoding="utf-8"))
 
     def test_bootstrap_asks_what_to_call_the_owner(self):
         r = self.e.py(BOOTSTRAP, "init", self.e.tmp / "p", "--name", "P", "--dry-run")

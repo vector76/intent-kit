@@ -1,0 +1,5 @@
+# intent-kit: the private record is its own git repository; the rest is local state
+/record/
+/.state/
+/out/
+__pycache__/

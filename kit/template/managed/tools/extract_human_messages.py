@@ -5,11 +5,11 @@ Used to create intent-log entries *verbatim*: never retype or paraphrase the
 human's words; extract them.
 
   List messages (* = its text is already in an intent entry on main;
-                 c = cited by intent-kit.json as an onboarding answer):
-    python tools/extract_human_messages.py <session-id or .jsonl> --list
+                 c = cited by intent-kit/config.json as an onboarding answer):
+    python intent-kit/tools/extract_human_messages.py <session-id or .jsonl> --list
 
   Write an intent entry from one or more messages:
-    python tools/extract_human_messages.py <session-id> \
+    python intent-kit/tools/extract_human_messages.py <session-id> \
         --slug short-name --msg 4 [5 ...] [--supersedes I-0001] [--tags cost,assembly]
         [--on-behalf-of NAME] [--question "<the agent's question, quoted exactly>" ...]
 
@@ -28,9 +28,9 @@ It's a judgment call, not a rule: when the words make sense on their own, add no
 and quote only the questions the words depend on.
 
 The entry gets the next free I- number on main and is committed straight to main
-(tools/to_main.py), wherever this runs, so two sessions or worktrees capturing at
+(intent-kit/tools/to_main.py), wherever this runs, so two sessions or worktrees capturing at
 once never pick the same number. Then update intent/vision.md and run
-`python tools/to_main.py docs -m "..."`.
+`python intent-kit/tools/to_main.py docs -m "..."`.
 
 A bare session id is looked up in Claude's transcript folders for this project
 first (the live transcript, worktrees included), then in the private record.
@@ -45,9 +45,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from kitlib import (CFG, CONFIG_NAME, SESSIONS, find_transcript, is_local_transcript,  # noqa: E402
-                    main_file_text, main_tree_files, my_name, session_author, yaml_str)
+                    kinds, main_file_text, main_tree_files, my_name, session_author, yaml_str, TOOLS_REL)
 
-LOG = "intent/log"
+LOG = kinds()["intent"][0]
 # Text that arrives as a "user" record but isn't the human's: command wrappers and system
 # injections start with "<"; projects can add more (Backplane's thread reports, say).
 NOT_HUMAN = tuple(["<", *CFG.get("not_human_prefixes", [])])
@@ -239,7 +239,7 @@ def main():
     if not author:
         sys.exit("whose session is this? Nothing records it" + (
             ": this clone hasn't been told who works in it. Ask them what to call them, then run "
-            "python tools/kit.py whoami --set \"<name>\"" if is_local_transcript(path) else
+            f"python {TOOLS_REL}/kit.py whoami --set \"<name>\"" if is_local_transcript(path) else
             ". Ask the person whose session it was, then pass --author \"<name>\""))
     behalf = a.on_behalf_of.strip()
     if behalf == author:

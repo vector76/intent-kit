@@ -2,10 +2,16 @@
 """Set a project up with intent-kit, or bring its kit-managed files up to date.
 
   python bootstrap.py init <dir> --name NAME [--summary TEXT] [choices...] [--dry-run]
-  python bootstrap.py upgrade <dir> [--apply]
+  python bootstrap.py upgrade <dir> [--kit-dir NAME] [--apply]
+
+Everything the kit adds goes in one folder, intent-kit/ unless --kit-dir names another:
+the tools, the commit hook, the config, the intent log, the vision and plan, the
+optional layers and the private record, with their own .gitignore and .gitattributes.
+Outside it, only CLAUDE.md gains an import line and .claude/settings.json gains the
+capture hooks; a new project also gets a README.md.
 
 init works on a new folder (it runs `git init`) or an existing repository (it adopts
-it). It only adds: existing files are never overwritten. CLAUDE.md, .gitignore and
+it). It only adds: existing files are never overwritten. CLAUDE.md and
 .claude/settings.json are merged into; anything that can't be merged safely stops the
 run before a single file is written, with a list of what's in the way.
 
@@ -19,7 +25,7 @@ Choices (see ONBOARDING.md for what each means; the agent asks the owner):
   --agents claude-only|any                   default claude-only
   --backplane                                the project uses Backplane
   --main-branch NAME                         default: current branch, or main
-  --tools-dir PATH                           default tools
+  --kit-dir NAME                             the folder the kit's files go in; default intent-kit
   --python CMD                               how the hooks run Python (python3, python, py -3 or a
                                              path); default: the first of those that runs 3.10+
   --record-remote URL                        a private git repo for record/: an empty one gets the
@@ -29,8 +35,8 @@ Choices (see ONBOARDING.md for what each means; the agent asks the owner):
                                              default: Claude Code's account name, else git's user.name).
                                              Kept in this clone's git config, not committed
 
-upgrade compares the project's kit-managed files (the tools, the commit hook and
-METHOD.md) with this kit and shows what differs; --apply replaces them, adds any
+upgrade compares the project's kit-managed files (the tools, the commit hook, METHOD.md
+and the folder's .gitignore) with this kit and shows what differs; --apply replaces them, adds any
 missing starter files (say, for a layer turned on since), records the kit version
 and re-renders METHOD-RULES.md (moving an older inlined rules section out of
 CLAUDE.md). Project content is never touched.
@@ -39,6 +45,7 @@ import argparse
 import difflib
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -48,19 +55,12 @@ MANAGED = KIT / "template" / "managed"
 STARTER = KIT / "template" / "starter"
 PHILOSOPHY = KIT / "PHILOSOPHY.md"
 VERSION = (KIT / "VERSION").read_text(encoding="utf-8").strip()
-CONFIG_NAME = "intent-kit.json"
 TOOL_FILES = ["kitlib.py", "capture_session.py", "extract_human_messages.py", "to_main.py",
               "sync.py", "land.py", "kit.py", "record_secrets.py"]
 LAYERS = {"research": "research", "concepts": "concepts", "experiments": "experiments"}
 STANCES = {"wide-search", "forward-plausibility"}
-GITIGNORE = ["/record/", "/.claude/current-session", "/.claude/record-turns/",
-             "/.claude/settings.local.json", "__pycache__/"]
-# Only for a new project: in an existing one, an ignored out/ could hide real work, and a new
-# .gitattributes could renormalize line endings so files look changed. Suggested instead.
-NEW_ONLY_GITIGNORE = ["/out/"]
-NEW_ONLY_STARTERS = [".gitattributes"]
+DEFAULT_KIT_DIR = "intent-kit"
 HOOK_EVENTS = ["SessionStart", "Stop", "SessionEnd"]
-HOOK = ".githooks/prepare-commit-msg"
 SESSION_END_TIMEOUT = 30  # seconds; Claude Code gives SessionEnd hooks 1.5 s unless told otherwise
 ADDED_SETTINGS = {"sync_after_to_main": False, "python": "python"}  # what older kits' hooks ran
 MIN_PYTHON = (3, 10)
@@ -114,35 +114,52 @@ def git(*args, cwd, check=False, input=None, env=None):
     return r
 
 
+def hook_path(cfg: dict) -> str:
+    return f"{cfg['kit_dir']}/githooks/prepare-commit-msg"
+
+
 def fill(text: str, cfg: dict) -> str:
+    d = cfg["kit_dir"]
     return (text.replace("{{PROJECT}}", cfg["project"])
                 .replace("{{SUMMARY}}", cfg.get("summary") or "*(One-paragraph summary to come.)*")
-                .replace("{{TOOLS}}", cfg["tools_dir"]))
+                .replace("{{TOOLS}}", f"{d}/tools")
+                .replace("{{KIT}}", d))
 
 
 def managed_files(cfg: dict) -> dict[str, Path]:
     """Project path -> kit source, for every file the kit owns."""
-    m = {f"{cfg['tools_dir']}/{n}": MANAGED / "tools" / n for n in TOOL_FILES}
-    m[".githooks/prepare-commit-msg"] = MANAGED / ".githooks" / "prepare-commit-msg"
-    m["METHOD.md"] = PHILOSOPHY
+    d = cfg["kit_dir"]
+    m = {f"{d}/tools/{n}": MANAGED / "tools" / n for n in TOOL_FILES}
+    m[hook_path(cfg)] = MANAGED / "githooks" / "prepare-commit-msg"
+    m[f"{d}/METHOD.md"] = PHILOSOPHY
+    m[f"{d}/.gitignore"] = MANAGED / "gitignore"
     return m
 
 
 def starter_files(cfg: dict) -> dict[str, str]:
     """Project path -> text, for files the kit creates once and the project then owns."""
-    s = {}
+    d, s = cfg["kit_dir"], {}
     for rel in ["intent/README.md", "intent/vision.md", "plan/requirements.md",
-                "plan/decisions/README.md", "plan/lessons/README.md"]:
-        s[rel] = fill((STARTER / rel).read_text(encoding="utf-8"), cfg)
+                "plan/decisions/README.md", "plan/lessons/README.md", ".gitattributes"]:
+        s[f"{d}/{rel}"] = fill((STARTER / rel).read_text(encoding="utf-8"), cfg)
     for layer in cfg["layers"]:
-        s[f"{LAYERS[layer]}/README.md"] = fill(
+        s[f"{d}/{LAYERS[layer]}/README.md"] = fill(
             (STARTER / "layers" / layer / "README.md").read_text(encoding="utf-8"), cfg)
+    s[f"{d}/README.md"] = kit_readme_text(cfg)
     return s
 
 
 def readme_text(cfg: dict) -> str:
-    t = cfg["tools_dir"]
-    rows = ["intent/log/       the owner's words, verbatim, append-only (I-xxxx)",
+    """The README of a new project (an existing one keeps its own, or none)."""
+    d = cfg["kit_dir"]
+    head = "**Confidential. Never publish this repository.**\n\n" if cfg["visibility"] == "confidential" else ""
+    return (f"# {cfg['project']}\n\n{head}{cfg.get('summary') or ''}\n\n"
+            f"The project's intent, plan and record-keeping are in [`{d}/`]({d}/README.md).\n")
+
+
+def kit_readme_text(cfg: dict) -> str:
+    """The kit folder's own README: what's in it."""
+    rows = ["intent/log/       people's words, verbatim, append-only, each naming its author (I-xxxx)",
             "intent/vision.md  current view, synthesized from the log",
             "plan/             requirements (R-), decisions (D-), lessons learned (L-)"]
     if "research" in cfg["layers"]:
@@ -151,13 +168,17 @@ def readme_text(cfg: dict) -> str:
         rows.append("concepts/         candidate designs and hypotheses (C-)")
     if "experiments" in cfg["layers"]:
         rows.append("experiments/      builds, tests and calculations that answer open questions (E-)")
-    rows.append(f"{t + '/':<18}record-keeping scripts (intent-kit)")
+    rows += ["tools/            record-keeping scripts",
+             "githooks/         the hook that adds a Session: trailer to each commit",
+             "config.json       how this project is run, citing what set each choice",
+             "METHOD-RULES.md   working rules for agents, generated from config.json",
+             "record/           raw session transcripts: a separate private repository, ignored"]
     head = "**Confidential. Never publish this repository.**\n\n" if cfg["visibility"] == "confidential" else ""
-    return (f"# {cfg['project']}\n\n{head}{cfg.get('summary') or ''}\n\n"
-            "## How this repo works\n\n```\n" + "\n".join(rows) + "\n```\n\n"
-            "The human's intent is recorded verbatim, projected into a current vision and plan, and "
-            "corrected by what the work teaches. Raw AI session transcripts live in a separate private "
-            "repository (`record/`, gitignored); commits here reference them by a `Session:` trailer. "
+    return (f"# {cfg['project']}: intent and record\n\n{head}"
+            "Everything the intent-kit method keeps for this project, in one folder so it doesn't mix with "
+            "the project's own files.\n\n```\n" + "\n".join(rows) + "\n```\n\n"
+            "People's intent is recorded verbatim, projected into a current vision and plan, and corrected "
+            "by what the work teaches. Commits reference the session that made them by a `Session:` trailer. "
             "See [METHOD.md](METHOD.md).\n")
 
 
@@ -170,7 +191,7 @@ def claude_text(cfg: dict) -> str:
 def merged_settings(path: Path, cfg: dict) -> str | None:
     """New settings.json text with the capture hooks added, or None if nothing to add."""
     data = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
-    cmd = f'{cfg["python"]} "$CLAUDE_PROJECT_DIR/{cfg["tools_dir"]}/capture_session.py"'
+    cmd = f'{cfg["python"]} "$CLAUDE_PROJECT_DIR/{cfg["kit_dir"]}/tools/capture_session.py"'
     hooks = data.setdefault("hooks", {})
     changed = False
     for ev in HOOK_EVENTS:
@@ -187,7 +208,7 @@ def choices(a) -> dict:
         cfg.update(json.loads(Path(a.config).read_text(encoding="utf-8")))
     given = {
         "project": a.name, "summary": a.summary, "visibility": a.visibility, "landing": a.landing,
-        "agents": a.agents, "main_branch": a.main_branch, "tools_dir": a.tools_dir,
+        "agents": a.agents, "main_branch": a.main_branch, "kit_dir": a.kit_dir,
         "layers": [x for x in a.layers.split(",") if x] if a.layers is not None else None,
         "stances": [x for x in a.stances.split(",") if x] if a.stances is not None else None,
         "push_on_land": False if a.no_push else None, "backplane": True if a.backplane else None,
@@ -197,8 +218,8 @@ def choices(a) -> dict:
     cfg.update({k: v for k, v in given.items() if v is not None})
     defaults = {"summary": "", "visibility": "confidential", "layers": [], "stances": [],
                 "landing": "linear", "push_on_land": True, "sync_after_to_main": False, "agents": "claude-only",
-                "backplane": False,
-                "tools_dir": "tools", "record_commit_every": 10, "not_human_prefixes": [], "sources": {}}
+                "backplane": False, "kit_dir": DEFAULT_KIT_DIR,
+                "record_commit_every": 10, "not_human_prefixes": [], "sources": {}}
     cfg = {**defaults, **cfg}
     if cfg["backplane"] and "[Backplane] " not in cfg["not_human_prefixes"]:
         cfg["not_human_prefixes"] = [*cfg["not_human_prefixes"], "[Backplane] "]
@@ -215,6 +236,10 @@ def choices(a) -> dict:
         errors.append(f"unknown layers: {', '.join(bad)}")
     if bad := [x for x in cfg["stances"] if x not in STANCES]:
         errors.append(f"unknown stances: {', '.join(bad)}")
+    parts = str(cfg["kit_dir"]).replace("\\", "/").strip("/").split("/")
+    if not all(re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9._-]*", x) for x in parts):
+        errors.append("--kit-dir is a folder name (letters, digits, '.', '_' and '-'), or a path of them")
+    cfg["kit_dir"] = "/".join(parts)
     if not cfg.get("python"):
         cfg["python"] = find_python()
         if not cfg["python"]:
@@ -231,7 +256,7 @@ def choices(a) -> dict:
 
 
 def run_tool(root: Path, cfg: dict, *args) -> int:
-    r = subprocess.run([sys.executable, str(root / cfg["tools_dir"] / "kit.py"), *args],
+    r = subprocess.run([sys.executable, str(root / cfg["kit_dir"] / "tools" / "kit.py"), *args],
                        cwd=str(root), text=True, encoding="utf-8")
     return r.returncode
 
@@ -248,31 +273,30 @@ def init(a):
             cfg["main_branch"] = git("symbolic-ref", "--short", "-q", "HEAD", cwd=root).stdout.strip() or "main"
     cfg.setdefault("main_branch", "main")
     cfg["main_branch"] = cfg["main_branch"] or "main"
+    d = cfg["kit_dir"]
+    hook = hook_path(cfg)
+    config_rel = f"{d}/config.json"
     config = {"kit_version": VERSION, **{k: cfg[k] for k in (
-        "project", "summary", "main_branch", "tools_dir", "python", "visibility", "layers", "stances", "landing",
+        "project", "summary", "main_branch", "python", "visibility", "layers", "stances", "landing",
         "push_on_land", "sync_after_to_main", "agents", "backplane", "record_commit_every", "not_human_prefixes",
         "sources")}}
 
     # --- what's in the way? nothing is written until this is empty ---
     blockers = []
-    if (root / "METHOD-RULES.md").exists():
-        blockers.append("METHOD-RULES.md exists; the kit generates that file")
-    if (root / CONFIG_NAME).exists():
-        blockers.append(f"{CONFIG_NAME} exists: this project is already set up (use `upgrade`)")
-    for rel, src in managed_files(cfg).items():
-        p = root / rel
-        if p.exists() and p.read_bytes() != src.read_bytes():
-            blockers.append(f"{rel} exists and isn't the kit's (choose another --tools-dir, or move it)")
+    if (root / config_rel).exists():
+        blockers.append(f"{config_rel} exists: this project is already set up (use `upgrade`)")
+    elif (root / d).exists() and any((root / d).iterdir()):
+        blockers.append(f"{d}/ already exists and isn't empty; choose another folder for the kit with --kit-dir")
     if is_repo:
-        if git("ls-files", "--", "record", cwd=root).stdout.strip():
-            blockers.append("record/ is tracked by this repository; the record must be a separate repo")
+        if git("ls-files", "--", d, cwd=root).stdout.strip():
+            blockers.append(f"{d}/ holds files tracked by this repository; choose another folder with --kit-dir")
         hp = git("config", "core.hooksPath", cwd=root).stdout.strip()
-        if hp and hp != ".githooks":
-            blockers.append(f"core.hooksPath is already {hp!r}; the Session: trailer hook needs .githooks")
+        if hp and hp != f"{d}/githooks":
+            blockers.append(f"core.hooksPath is already {hp!r}; the Session: trailer hook needs {d}/githooks")
         own = root / ".git" / "hooks" / "prepare-commit-msg"
         if own.is_file() and not hp:
             blockers.append(".git/hooks/prepare-commit-msg exists and would stop running; merge it into "
-                            ".githooks/ by hand first")
+                            f"{d}/githooks/ by hand first")
     remote = a.record_remote
     if remote and git("ls-remote", remote, cwd=root if root.exists() else KIT, env=QUIET).returncode != 0:
         blockers.append(f"can't reach the record remote {remote} (check the URL and that you can read it)")
@@ -296,35 +320,13 @@ def init(a):
             skipped.append(rel)
         else:
             writes[rel] = text
-    suggestions = []
-    for rel in NEW_ONLY_STARTERS:
-        if (root / rel).exists():
-            continue
-        if is_repo:
-            suggestions.append(f"{rel}: none here. The kit's ({(STARTER / rel).read_text(encoding='utf-8').splitlines()[0]}, ...) "
-                               "keeps line endings consistent, but adding it to an existing repo can make files "
-                               "look changed. Check `git ls-files --eol` first.")
-        else:
-            writes[rel] = (STARTER / rel).read_text(encoding="utf-8")
-    if not (root / "README.md").exists():
+    if not is_repo and not (root / "README.md").exists():
         writes["README.md"] = readme_text(cfg)
     if not (root / "CLAUDE.md").exists():
         writes["CLAUDE.md"] = claude_text(cfg)
-    writes[CONFIG_NAME] = json.dumps(config, indent=2) + "\n"
+    writes[config_rel] = json.dumps(config, indent=2) + "\n"
     if new_settings:
         writes[".claude/settings.json"] = new_settings
-    gi = root / ".gitignore"
-    have = gi.read_text(encoding="utf-8").splitlines() if gi.is_file() else []
-    wanted = GITIGNORE + ([] if is_repo else NEW_ONLY_GITIGNORE)
-    missing = [ln for ln in wanted if ln not in have]
-    if is_repo and "/out/" not in have:
-        suggestions.append("out/: not ignored here. Write to_main.py drafts in a temp or scratch folder, or "
-                           "ignore a drafts folder of your choosing.")
-    if missing:
-        base = gi.read_text(encoding="utf-8") if gi.is_file() else ""
-        sep = "" if not base else ("\n" if base.endswith("\n") else "\n\n")
-        writes[".gitignore"] = base + sep + "# intent-kit: the private record is its own repo; local state\n" \
-            + "\n".join(missing) + "\n"
 
     print(f"bootstrap: {'adopting' if is_repo else 'creating'} {root} (kit {VERSION})")
     for rel in sorted(writes):
@@ -332,16 +334,14 @@ def init(a):
         print(f"  {verb:6} {rel}")
     for rel in skipped:
         print(f"  keep   {rel} (exists; left as it is)")
-    print(f"  record/ as its own git repo{' (exists)' if (root / 'record' / '.git').exists() else ''}"
+    print(f"  {d}/record/ as its own git repo{' (exists)' if (root / d / 'record' / '.git').exists() else ''}"
           + (f", remote {remote}" if remote else ", local only (no remote)"))
     print(f"  hooks run Python as: {cfg['python']}")
     me = (a.me or "").strip() or suggested_name()
     print(f"  sessions and intent here recorded as: {me}" + ("" if a.me else " (suggested; --me to change)")
           if me else "  sessions and intent here recorded as: nobody yet (pass --me NAME)")
-    print("  git config core.hooksPath .githooks")
-    print("  render METHOD-RULES.md and import it from CLAUDE.md (one @METHOD-RULES.md line)")
-    for s_ in suggestions:
-        print(f"  suggest (not done) {s_}")
+    print(f"  git config core.hooksPath {d}/githooks")
+    print(f"  render {d}/METHOD-RULES.md and import it from CLAUDE.md (one @{d}/METHOD-RULES.md line)")
     if a.dry_run:
         print("bootstrap: dry run; nothing was changed")
         return
@@ -354,47 +354,58 @@ def init(a):
         p = root / rel
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(text, encoding="utf-8", newline="\n")
-        if rel.startswith(".githooks/"):
+        if rel == hook:
             p.chmod(0o755)
-    git("config", "core.hooksPath", ".githooks", cwd=root, check=True)
+    git("config", "core.hooksPath", f"{d}/githooks", cwd=root, check=True)
     if me:
         git("config", "--local", "intent-kit.name", me, cwd=root, check=True)
     if run_tool(root, cfg, "record", *(["--remote", remote] if remote else [])) != 0:
         print("bootstrap: the record isn't fully set up (see above); fix it, then run "
-              f"python {cfg['tools_dir']}/kit.py record" + (f" --remote {remote}" if remote else ""))
+              f"python {d}/tools/kit.py record" + (f" --remote {remote}" if remote else ""))
     run_tool(root, cfg, "render")
     # Windows doesn't record the executable bit, and macOS and Linux skip a hook without it,
     # so git's copy is marked executable whatever this machine is.
     if is_repo:
-        git("add", "--chmod=+x", "--", HOOK, cwd=root, check=True)
-        print(f"bootstrap: staged {HOOK} as executable (git skips a hook that isn't, on macOS and Linux)")
+        git("add", "--chmod=+x", "--", hook, cwd=root, check=True)
+        print(f"bootstrap: staged {hook} as executable (git skips a hook that isn't, on macOS and Linux)")
     else:
         git("add", "-A", cwd=root, check=True)
-        git("update-index", "--chmod=+x", "--", HOOK, cwd=root, check=True)
+        git("update-index", "--chmod=+x", "--", hook, cwd=root, check=True)
         git("commit", "-q", "-m", f"Set up {cfg['project']} with intent-kit {VERSION}", cwd=root, check=True)
         print(f"bootstrap: committed the scaffold on {cfg['main_branch']}")
     run_tool(root, cfg, "check")
-    t = cfg["tools_dir"]
+    t = f"{d}/tools"
     print("\nbootstrap: next steps (ONBOARDING.md has the detail):")
     if is_repo:
         print(f"  - review and commit the scaffold on {cfg['main_branch']} (git status)")
         print(f"  - sweep this project's earlier sessions into the record: python {t}/capture_session.py --all --commit")
     if not me:
         print(f"  - ask the owner what to call them, then: python {t}/kit.py whoami --set \"<name>\"")
-    print(f"  - cite the owner's onboarding answers in {CONFIG_NAME} (not as intent): "
+    print(f"  - cite the owner's onboarding answers in {config_rel} (not as intent): "
           f"python {t}/kit.py cite <session-id> --msg <n> --keys <settings>")
     print(f"  - capture the owner's first words about the project as I-0001: "
           f"python {t}/extract_human_messages.py <session-id> --list")
-    print(f"  - write intent/vision.md from them, then python {t}/to_main.py docs -m \"...\"")
+    print(f"  - write {d}/intent/vision.md from them, then python {t}/to_main.py docs -m \"...\"")
+
+
+def find_kit_dir(root: Path) -> str | None:
+    """The project's kit folder: the one holding config.json and tools/kitlib.py."""
+    found = [p.name for p in sorted(root.iterdir()) if p.is_dir()
+             and (p / "config.json").is_file() and (p / "tools" / "kitlib.py").is_file()]
+    return found[0] if len(found) == 1 else None
 
 
 def upgrade(a):
     root = Path(a.dir).resolve()
-    cfg_path = root / CONFIG_NAME
+    d = a.kit_dir or find_kit_dir(root)
+    if not d:
+        sys.exit(f"bootstrap: no kit folder found in {root} (pass --kit-dir, or use `init`)")
+    cfg_path = root / d / "config.json"
     if not cfg_path.is_file():
-        sys.exit(f"bootstrap: {root} has no {CONFIG_NAME}; use `init`")
-    cfg = {"tools_dir": "tools", "layers": [], "project": root.name, "summary": "",
-           **json.loads(cfg_path.read_text(encoding="utf-8"))}
+        sys.exit(f"bootstrap: {root} has no {d}/config.json; use `init`")
+    cfg = {"layers": [], "project": root.name, "summary": "", "visibility": "confidential",
+           **json.loads(cfg_path.read_text(encoding="utf-8")), "kit_dir": d}
+    hook = hook_path(cfg)
     changed = []
     for rel, src in managed_files(cfg).items():
         p = root / rel
@@ -413,10 +424,10 @@ def upgrade(a):
     for rel in new_starters:
         print(f"--- {rel}: missing starter file; the kit would add it")
     old_version = cfg.get("kit_version", "?")
-    mode = git("ls-files", "-s", "--", HOOK, cwd=root).stdout.split()
+    mode = git("ls-files", "-s", "--", hook, cwd=root).stdout.split()
     hook_not_x = bool(mode) and mode[0] != "100755"
     if hook_not_x:
-        print(f"--- {HOOK}: tracked as not executable, so git on macOS and Linux skips it; the kit would fix that")
+        print(f"--- {hook}: tracked as not executable, so git on macOS and Linux skips it; the kit would fix that")
     if not changed and not new_starters and not hook_not_x and old_version == VERSION:
         print(f"bootstrap: {root} is up to date with kit {VERSION}")
         return
@@ -434,8 +445,8 @@ def upgrade(a):
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(starters[rel], encoding="utf-8", newline="\n")
     if hook_not_x:
-        git("update-index", "--chmod=+x", "--", HOOK, cwd=root, check=True)
-        print(f"bootstrap: staged {HOOK} as executable; commit it")
+        git("update-index", "--chmod=+x", "--", hook, cwd=root, check=True)
+        print(f"bootstrap: staged {hook} as executable; commit it")
     data = json.loads(cfg_path.read_text(encoding="utf-8"))
     data["kit_version"] = VERSION
     for k, v in ADDED_SETTINGS.items():  # settings added in later kit versions, at their defaults
@@ -443,7 +454,7 @@ def upgrade(a):
     cfg_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8", newline="\n")
     run_tool(root, cfg, "render")
     print(f"bootstrap: updated {len(changed) + len(new_starters)} file(s) to kit {VERSION}. Commit the tools "
-          f"as usual; publish {CONFIG_NAME}, METHOD-RULES.md and CLAUDE.md with tools/to_main.py docs.")
+          f"as usual; publish {d}/config.json, {d}/METHOD-RULES.md and CLAUDE.md with {d}/tools/to_main.py docs.")
     run_tool(root, cfg, "check")
 
 
@@ -463,7 +474,7 @@ def main():
     i.add_argument("--agents")
     i.add_argument("--backplane", action="store_true")
     i.add_argument("--main-branch")
-    i.add_argument("--tools-dir")
+    i.add_argument("--kit-dir")
     i.add_argument("--python")
     i.add_argument("--record-remote")
     i.add_argument("--config")
@@ -471,6 +482,7 @@ def main():
     i.add_argument("--dry-run", action="store_true")
     u = sub.add_parser("upgrade")
     u.add_argument("dir")
+    u.add_argument("--kit-dir")
     u.add_argument("--apply", action="store_true")
     a = ap.parse_args()
     init(a) if a.cmd == "init" else upgrade(a)
