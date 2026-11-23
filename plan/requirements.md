@@ -25,11 +25,18 @@ others are added or removed.
 - **R-004 (hard).** Includes the scripts for session capture and verbatim intent
   extraction, with the improvements found in earlier use. [I-0001]
 
+- **R-012 (hard).** What ships contains no record of developing the kit: a new project's
+  intent log, decisions and lessons start empty. [I-0006]
+- **R-013 (target).** The working rules reach a project as a file its `CLAUDE.md`
+  imports, not as text written into `CLAUDE.md`. [I-0006]
+
 ## Onboarding
 
 - **R-005 (target).** An onboarding phase asks the owner about the configuration and
   records the answers so the repository respects them. [I-0003] Which options it asks
   about is still open (see the vision).
+- **R-014 (hard).** Onboarding answers are cited from the configuration, by session and
+  message, and aren't added to the project's intent log. [I-0006]
 
 ## Parallel work
 

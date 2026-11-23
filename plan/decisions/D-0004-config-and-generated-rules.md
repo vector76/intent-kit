@@ -1,7 +1,7 @@
 ---
 id: D-0004
 date: 2026-11-23
-status: active
+status: replaced-by D-0005
 from: [I-0003, I-0004]
 ---
 # Onboarding choices live in intent-kit.json and generate part of CLAUDE.md

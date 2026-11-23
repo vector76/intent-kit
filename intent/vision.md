@@ -28,14 +28,24 @@ improvements found while using it. [I-0001]
 
 ## What it contains
 
+The kit ships **projected documents and tools, not a record**: how-to instructions,
+recipes and scripts that a project's `CLAUDE.md` links to. The kit's own intent,
+decisions and lessons matter for developing the kit, but they don't go into a project,
+which starts its own record empty. [I-0006]
+
 - **A clean write-up of the philosophy.** The owner first laid it out as spoken,
   transcribed prompts, full of speech-to-text slips. The kit has it as a neat document
   that a new project starts from. [I-0001]
 - **Templates and scripts**: the folder structure, starter documents and the Python
   tools that capture sessions and intent. [I-0001]
+- **Rules linked into `CLAUDE.md`**, not dropped into it. The working rules are a
+  generated file the project's `CLAUDE.md` imports, so `CLAUDE.md` stays the project's
+  own. [I-0006]
 - **An onboarding phase.** When a project is first brought in, the owner answers a set of
   configuration questions, and the answers are recorded so the repository respects them.
-  [I-0003]
+  [I-0003] The answers are cited from the configuration, not entered as the project's
+  intent: a project's log doesn't open with record-keeping. [I-0006] Setup choices the
+  owner changes later are captured as intent like anything else. [I-0005]
 
 ## How it handles parallel work
 
