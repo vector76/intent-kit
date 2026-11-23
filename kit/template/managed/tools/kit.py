@@ -424,9 +424,6 @@ def check(root: Path = REPO) -> list[str]:
     p = record_problem()
     if p:
         problems.append(p)
-    elif not git("remote", cwd=RECORD).stdout.strip():
-        notes.append(f"record/ has no remote, so it exists only on this machine "
-                     f"(python {t}/kit.py record --remote <private url>)")
     py = cfg.get("python") or "python"
     v = python_version(py)
     if v is None:

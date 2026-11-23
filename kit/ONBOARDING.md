@@ -52,27 +52,35 @@ Where there's a default, say what it is.
 | Agents | **Claude only** (default) or any | Other agents leave no transcript; the rule says so |
 | Backplane | yes or **no** | Backplane-specific rules; skips its `[Backplane]` reports when extracting intent |
 | Tools folder | **tools** (default) | Use another (`tools/kit`) if `tools/` holds files of the same names |
-| Record remote | **none** (default), an existing private repo, or a new one | Where the record is backed up and shared. See below |
+| Record remote | **local only** (default), an existing private repo, or a new one | Whether the record ever leaves this machine. See below |
 
-**The record's remote.** Ask whether the owner has a private git repository for the
-record, wants a new one, or wants none for now (it can be added any time later).
-- **An existing one:** take its URL. If it's empty, the bootstrap pushes the new record
-  to it. If it already holds this project's record (from another machine, say), the
-  bootstrap checks it out into `record/`.
-- **A new one:** it must be **private**, and empty (no README or license), so the record
-  can be pushed to it. Either the owner creates it on their git host and gives you the
-  URL, or, if the GitHub CLI is installed and signed in (`gh auth status`) and the owner
-  says yes to this repo name, run `gh repo create <name> --private`. Then check
-  `gh repo view <name> --json visibility` says `PRIVATE` before using it. Never create a
-  public one. Creating it is the owner's call each time; don't do it on a general OK.
-- **None:** the record lives only on this machine until a remote is added
-  (`tools/kit.py check` notes this).
+**Where the record lives.** Offer all three as equal choices, and don't steer toward a
+remote:
+- **Local only, no remote.** The record never leaves this machine. This is somewhat safer
+  for privacy: there's no server copy to misconfigure or leak. The cost is no backup and
+  no sharing unless the owner arranges that some other way. The owner can still add a
+  remote later.
+- **An existing private repository**, on any git server: a hosting service, a
+  self-hosted server, an SSH host, or a bare repository on another drive. Take whatever
+  URL `git` accepts (`ssh://`, `user@host:path`, `https://` or a filesystem path). If
+  it's empty, the bootstrap pushes the new record to it. If it already holds this
+  project's record (from another machine, say), the bootstrap checks it out into
+  `record/`.
+- **A new one.** It must be **private** and empty, so the record can be pushed to it.
+  Usually the owner creates it wherever they keep repositories and gives you the URL.
+  If they'd like you to create it, and it's a plain git location you can reach, use plain
+  git once they've said yes to that exact location: `git init --bare <path>`, or
+  `ssh <host> git init --bare <path>`. Don't use a hosting service's own command-line
+  tool or API unless the owner asks for that specific tool.
 
-The bootstrap checks it can reach the URL before writing anything.
+Whoever creates the remote, ask the owner to confirm it's private. The kit can't check
+that in a way that works on every host.
+
+Given a URL, the bootstrap checks it can reach it before writing anything.
 
 Some things are fixed, not choices; say so if they come up:
 - **The record is always a separate private git repo** (`record/`, ignored by the
-  project), whether or not it has a remote.
+  project), whether it stays local or has a remote.
 - **Numbered entries are sequential and committed to main when created.** This works the
   same in worktrees, on branches and in a single checkout.
 
@@ -155,14 +163,19 @@ Then:
 - **A new kit version.** `python <kit>/bootstrap.py upgrade <project>` shows how the
   managed files (tools, commit hook, METHOD.md) differ, and `--apply` updates them and
   re-renders `METHOD-RULES.md`. It never touches the project's own content.
-- **A record remote added later.** `python tools/kit.py record --remote <private url>`
-  connects `record/` to it, and pushes the record if the remote is empty. After that,
-  push and pull the record like any repo (`git -C record push`).
+- **A record remote added later**, if the owner decides they want one:
+  `python tools/kit.py record --remote <private url>` connects `record/` to it and
+  pushes the record if the remote is empty. After that, push and pull the record like
+  any repo (`git -C record push`).
 - **A fresh clone of the project** (another machine, or a re-clone) has no `record/`,
   since it's ignored, and no hooks path. Until both are set up, the hooks record nothing
-  and say so at session start. Set them up with
-  `git config core.hooksPath .githooks` and `python tools/kit.py record --remote <url>`.
-  The second checks out the existing record; leave out `--remote` to start a new local
-  one. Then run `tools/kit.py check`.
+  and say so at session start. Set the hooks path with
+  `git config core.hooksPath .githooks`. Then set up the record:
+  - If it has a remote, `python tools/kit.py record --remote <url>` checks it out.
+  - If it's local only, `python tools/kit.py record` starts a new local record for this
+    machine. A local-only record is one per machine. If an earlier one exists, copying
+    it over (any way the owner likes, such as a drive) keeps it whole.
+
+  Then run `tools/kit.py check`.
 - **A different Python.** Change `"python"` in `intent-kit.json` and run
   `tools/kit.py render`, which updates the hooks in `.claude/settings.json` to match.

@@ -419,7 +419,7 @@ class KitTest(unittest.TestCase):
         self.e.tool(root, "capture_session.py", input=json.dumps(
             {"hook_event_name": "SessionEnd", "session_id": SID_A, "transcript_path": str(t)}))
         self.e.git(root / "record", "push", "-q")
-        self.assertNotIn("has no remote", self.e.tool(root, "kit.py", "check").stdout)
+        self.e.tool(root, "kit.py", "check")
 
         # a fresh clone of the project has no record/ until it's set up
         clone = self.e.tmp / "clone"
@@ -436,9 +436,16 @@ class KitTest(unittest.TestCase):
         self.assertTrue((clone / "record" / "sessions" / f"2026-01-02_{SID_A}.jsonl").is_file())  # checked out
         self.e.tool(clone, "kit.py", "check")
 
-        # a record with no remote yet gets one later, and is pushed to it
+        # local only is a full choice: no remote, and check doesn't nag about it
         solo = self.new_project("solo")
-        self.assertIn("has no remote", self.e.tool(solo, "kit.py", "check").stdout)
+        self.assertEqual(self.e.git(solo / "record", "remote").stdout.strip(), "")
+        self.assertNotIn("remote", self.e.tool(solo, "kit.py", "check").stdout)
+        solo_clone = self.e.tmp / "solo-clone"  # a local-only record starts afresh on a new clone
+        self.e.git(self.e.tmp, "clone", "-q", solo, solo_clone)
+        self.e.git(solo_clone, "config", "core.hooksPath", ".githooks")
+        self.e.tool(solo_clone, "kit.py", "record")
+        self.e.tool(solo_clone, "kit.py", "check")
+        # and a remote can still be added later; an empty one gets the record pushed to it
         bare2 = self.e.tmp / "solo-record.git"
         self.e.git(self.e.tmp, "init", "-q", "--bare", bare2)
         self.e.tool(solo, "kit.py", "record", "--remote", bare2)

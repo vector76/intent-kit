@@ -314,7 +314,7 @@ def init(a):
     for rel in skipped:
         print(f"  keep   {rel} (exists; left as it is)")
     print(f"  record/ as its own git repo{' (exists)' if (root / 'record' / '.git').exists() else ''}"
-          + (f", remote {remote}" if remote else ", no remote (the owner can add one later)"))
+          + (f", remote {remote}" if remote else ", local only (no remote)"))
     print(f"  hooks run Python as: {cfg['python']}")
     print("  git config core.hooksPath .githooks")
     print("  render METHOD-RULES.md and import it from CLAUDE.md (one @METHOD-RULES.md line)")
